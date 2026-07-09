@@ -4,121 +4,71 @@
  * 使用方式：在 supabase.ts 中通过 NEXT_PUBLIC_DEPLOY_ENV=domestic 切换到本模块。
  * 业务代码无需任何改动，import 路径不变（仍从 @/lib/supabase 导入）。
  *
- * 兼容性对照（基于 CloudBase 官方迁移文档 2026-06-25）：
- *   ✅ .from().select()/.insert()/.update()/.delete()  零改动
- *   ✅ .rpc()                                        零改动
- *   ✅ auth.signOut / getSession / onAuthStateChange / getUser / signInAnonymously  兼容
- *   ⚠️ auth.signUp / signInWithPassword               参数格式需适配
- *   ❌ storage / realtime                             不支持（本项目未使用 storage）
+ * 依据腾讯云官方文档（2026-07 版）确认：
+ *   - 客户端 SDK：@cloudbase/js-sdk v3（@cloudbase/node-sdk 已停维护，v3 内置 Node 适配）
+ *   - PG 模式数据库入口：app.rdb()  —— 注意「传统模式」用 app.database().collection()，
+ *     「PG 模式」才用 rdb().from()，两者入口不同。本项目是 PG 模式。
+ *   - rdb().from() / .insert() / .update() / .delete() / .upsert() / .rpc()
+ *     链式 API 与 Supabase 完全一致（官方迁移文档确认零改动）。
+ *   - 浏览器端鉴权：init({ env, accessKey })  → accessKey = Publishable Key（等价 anon）
+ *   - 服务端鉴权：init({ env }) 自动读取 CLOUDBASE_APIKEY 环境变量
+ *     （控制台生成的「服务端 API Key」，等价于 service_role，BYPASS RLS）
  */
 
-// ─── 类型兼容：让 TypeScript 把 CloudBase 的 db 当 SupabaseClient 用 ───
-// CloudBase JS SDK 的 rdb() 返回的查询构建器与 supabase-js 链式 API 高度对齐，
-// 但类型定义不同。这里用鸭子类型 + 断言桥接，避免业务侧逐文件改类型。
+import cloudbase from '@cloudbase/js-sdk'
 
-declare module '@cloudbase/js-sdk' {
-  interface CloudbaseRdbQuery {
-    select(columns?: string): CloudbaseRdbQuery & { single(): Promise<{ data: any; error: any }> }
-    insert(record: any): Promise<{ data: any; error: any }>
-    update(record: any): CloudbaseRdbQuery
-    delete(): CloudbaseRdbQuery
-    eq(column: string, value: any): CloudbaseRdbQuery
-    neq(column: string, value: any): CloudbaseRdbQuery
-    gt(column: string, value: any): CloudbaseRdbQuery
-    gte(column: string, value: any): CloudbaseRdbQuery
-    lt(column: string, value: any): CloudbaseRdbQuery
-    lte(column: string, value: any): CloudbaseRdbQuery
-    like(column: string, value: any): CloudbaseRdbQuery
-    ilike(column: string, value: any): CloudbaseRdbQuery
-    in(column: string, values: any[]): CloudbaseRdbQuery
-    contains(column: string, value: any): CloudbaseRdbQuery
-    containedBy(column: string, value: any): CloudbaseRdbQuery
-    is(column: string, value: any): CloudbaseRdbQuery
-    or(filter: string): CloudbaseRdbQuery
-    not(column: string, op: string, value: any): CloudbaseRdbQuery
-    order(column: string, options?: { ascending?: boolean }): CloudbaseRdbQuery
-    range(from: number, to: number): CloudbaseRdbQuery
-    limit(count: number): CloudbaseRdbQuery
-    single(): Promise<{ data: any; error: any }>
-    maybeSingle(): Promise<{ data: any; error: any }>
-    upsert(record: any, options?: { onConflict?: string }): Promise<{ data: any; error: any }>
-    then<T>(onfulfilled?: (value: any) => T, onrejected?: (reason: any) => T): Promise<T>
-  }
+// 环境地域：上海（x02-01 所在地域，必须与实际一致，否则请求失败）
+const REGION = process.env.NEXT_PUBLIC_CLOUDBASE_REGION || 'ap-shanghai'
+const ENV_ID = process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID!
 
-  interface CloudbaseAuth {
-    signUp(params: { email?: string; password?: string; phone?: string; username?: string }): Promise<any>
-    signInWithPassword(params: { email?: string; password?: string; username?: string }): Promise<any>
-    signInAnonymously(): Promise<any>
-    signOut(): Promise<any>
-    getSession(): Promise<any>
-    getUser(): Promise<any>
-    onAuthStateChange(callback: (event: string, session: any) => void): { data: { subscription: { unsubscribe: () => void } } }
-  }
-
-  interface CloudbaseApp {
-    rdb(): { from(table: string): CloudbaseRdbQuery; rpc(fn: string, params?: object): CloudbaseRdbQuery }
-    auth: CloudbaseAuth
-  }
-
-  function init(options: { env: string; accessKey?: string; secretKey?: string }): CloudbaseApp
-}
-
-let _app: ReturnType<typeof import('@cloudbase/js-sdk').init> | null = null
-
-/** 获取 CloudBase 应用实例（单例懒初始化） */
-function getApp(useAdminKey = false): ReturnType<typeof import('@cloudbase/js-sdk').init> {
+// ─── 浏览器端 app（Publishable Key，匿名角色，受 RLS 约束）───
+let _app: any = null
+function getApp(): any {
   if (!_app) {
-    const cloudbase = require('@cloudbase/js-sdk')
-
-    const envId = process.env.NEXT_PUBLIC_CLOUDBASE_ENV_ID!
-    const accessKey = process.env.NEXT_PUBLIC_CLOUDBASE_ACCESS_KEY!
-
-    // 管理端使用 secretKey（等价于 Supabase 的 service_role key）
-    if (useAdminKey && process.env.CLOUDBASE_SERVICE_ROLE_KEY) {
-      _app = cloudbase.init({
-        env: envId,
-        secretKey: process.env.CLOUDBASE_SERVICE_ROLE_KEY,
-      })
-    } else {
-      _app = cloudbase.init({ env: envId, accessKey })
-    }
+    _app = cloudbase.init({
+      env: ENV_ID,
+      region: REGION,
+      accessKey: process.env.NEXT_PUBLIC_CLOUDBASE_ACCESS_KEY!,
+    })
   }
   return _app
 }
 
-// ─── 浏览器端客户端（等价于 export const supabase） ───
+// ─── 服务端管理 app（CLOUDBASE_APIKEY，管理员权限，BYPASS RLS）───
+// 对应 Supabase 的 service_role key。
+// 文档约定：自建服务器把「服务端 API Key」配到 CLOUDBASE_APIKEY 环境变量，
+// SDK 自动读取，无需在 init 里显式传参。
+let _adminApp: any = null
+function getAdminApp(): any {
+  if (!_adminApp) {
+    const params: any = { env: ENV_ID, region: REGION }
+    // 若同时提供了腾讯云 CAM 密钥（secretId+secretKey），则优先用它们（同样是管理员）
+    if (process.env.TENCENTCLOUD_SECRETID && process.env.TENCENTCLOUD_SECRETKEY) {
+      params.secretId = process.env.TENCENTCLOUD_SECRETID
+      params.secretKey = process.env.TENCENTCLOUD_SECRETKEY
+    }
+    _adminApp = cloudbase.init(params)
+  }
+  return _adminApp
+}
+
+// ─── 浏览器端客户端（等价于 export const supabase）───
 
 export const domesticClient: any = {
-  /**
-   * 数据库操作 —— .from() 直接透传给 CloudBase rdb()
-   * CloudBase 文档确认：链式 API 与 Supabase 完全一致
-   */
+  /** 数据库操作 —— PG 模式入口是 rdb()，内部 .from() 与 Supabase 完全一致 */
   from: (table: string) => getApp().rdb().from(table),
-
-  /**
-   * RPC 调用 —— 透传给 CloudBase rdb().rpc()
-   * 文档确认：参数格式完全一致
-   */
+  /** RPC 调用 —— 与 Supabase .rpc() 完全兼容 */
   rpc: (fn: string, params?: object) => getApp().rdb().rpc(fn, params),
-
-  /**
-   * 认证模块 —— 大部分方法名一致，少数参数格式需适配
-   */
   auth: {
-    /** 获取当前用户（CloudBase 原生支持） */
     async getUser() {
       return getApp().auth.getUser()
     },
-
-    /** 匿名登录（CloudBase 原生支持，方法签名一致） */
     async signInAnonymously() {
       return getApp().auth.signInAnonymously()
     },
-
     /**
-     * 密码登录 —— 适配参数格式差异：
-     * Supabase: { email, password }
-     * CloudBase: { username, password } （也接受 email 作为 username）
+     * 密码登录：CloudBase 参数为 { username, password }（也接受 email 作为 username）
+     * Supabase 为 { email, password } —— 这里做桥接
      */
     async signInWithPassword(params: { email?: string; password?: string }) {
       return getApp().auth.signInWithPassword({
@@ -126,11 +76,8 @@ export const domesticClient: any = {
         password: params.password,
       })
     },
-
     /**
-     * 注册 —— 适配参数格式差异：
-     * Supabase: { email, password } 一步完成
-     * CloudBase: 也支持 email+password 注册（内部走账号密码流程）
+     * 注册：CloudBase PG 的 signUp 为账号密码流程，参数同 Supabase 的 email+password
      */
     async signUp(params: { email?: string; password?: string }) {
       return getApp().auth.signUp({
@@ -138,29 +85,23 @@ export const domesticClient: any = {
         password: params.password,
       })
     },
-
-    /** 登出（方法签名一致） */
     async signOut() {
       return getApp().auth.signOut()
     },
-
-    /** 获取会话（方法签名一致） */
     async getSession() {
       return getApp().auth.getSession()
     },
-
-    /** 监听认证状态变化（方法签名一致） */
     onAuthStateChange(callback: (event: string, session: any) => void) {
       return getApp().auth.onAuthStateChange(callback)
     },
   },
 }
 
-// ─── 服务端管理客户端（等价于 export const supabaseAdmin） ───
-// 使用 service_role key，具备 BYPASSRLS 权限
+// ─── 服务端管理客户端（等价于 export const supabaseAdmin）───
+// 使用 CLOUDBASE_APIKEY（服务端 API Key），具备 BYPASS RLS 权限
 
 export const domesticAdminClient: any = {
-  from: (table: string) => getApp(true).rdb().from(table),
-  rpc: (fn: string, params?: object) => getApp(true).rdb().rpc(fn, params),
+  from: (table: string) => getAdminApp().rdb().from(table),
+  rpc: (fn: string, params?: object) => getAdminApp().rdb().rpc(fn, params),
   auth: domesticClient.auth,
 }
