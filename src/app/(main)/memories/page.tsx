@@ -159,18 +159,34 @@ export default function MemoriesPage() {
       }
 
       // 批量上传（逐条调用 API）
+      // 支持行首可选的【类型】标签（来自角色知识种子文件），映射到 DB 类型
+      const TYPE_MAP: Record<string, 'fact' | 'event' | 'preference' | 'summary'> = {
+        '基础设定': 'fact', '语言风格': 'fact', '人物关系': 'fact', '关键物品': 'fact',
+        '情感锚点': 'fact', '世界观': 'fact', '表达层级': 'fact',
+        '核心剧情': 'event', '隐藏剧情': 'event'
+      }
       let successCount = 0
-      for (const line of lines.slice(0, 50)) { // 最多50条
+      for (const rawLine of lines.slice(0, 50)) { // 最多50条
         try {
+          let memory_type: 'fact' | 'event' | 'preference' | 'summary' = 'summary'
+          let content = rawLine
+          const tagMatch = rawLine.match(/^【(.+?)】/)
+          if (tagMatch) {
+            const mapped = TYPE_MAP[tagMatch[1]]
+            if (mapped) {
+              memory_type = mapped
+              content = rawLine.slice(tagMatch[0].length).trim()
+            }
+          }
           const res = await fetch('/api/memory', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               user_id: userId,
-              content: line,
-              memory_type: 'summary', // 默认作为摘要类型
-              importance: 6,
-              tags: ['手动导入']
+              content,
+              memory_type,
+              importance: 7,
+              tags: ['角色知识', '手动导入']
             })
           })
           if (res.ok) successCount++

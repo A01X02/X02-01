@@ -15,10 +15,33 @@ const MODEL_ID = process.env.DOUBAO_MODEL_ID || 'ep-20260709001000-997r8'
 const MEMORY_EXTRACTION_INTERVAL = 6
 const SUMMARY_THRESHOLD = 15
 
-/** 构建带人设的系统提示词 */
-function buildSystemPrompt(): string {
+/**
+ * 构建带人设的系统提示词
+ * @param userName 用户自报的名字（可选，用于拟人化称呼）
+ * @param aiName   用户给 bot 设置的显示名（可选，e.g. "哥哥"）
+ */
+function buildSystemPrompt(userName?: string, aiName?: string): string {
   const p = defaultPersona
+
+  // 动态称呼处理：用户若给 bot 改了显示名，温顺接受；若自报名字，用其名字称呼
+  let nameRule = ''
+  if (aiName && aiName.trim() && aiName.trim() !== p.name) {
+    nameRule += `\n- 用户把你的显示名改成了「${aiName.trim()}」，你可以接受这个称呼；当用户这样叫你时，自然回应即可。但你的真实身份仍是夏以昼。`
+  }
+  if (userName && userName.trim()) {
+    nameRule += `\n- 用户的名字是「${userName.trim()}」，之后直接用这个名字称呼她（代替默认的"妹妹"）。`
+  }
+
+  const rulesText = p.interactionRules.map((r, i) => `${i + 1}. ${r}`).join('\n')
+  const samplesText = p.sampleLines.map(s => `· ${s}`).join('\n')
+
   return `${p.personality}
+
+【世界观与人物关系】
+${p.worldview}
+
+【记忆与背景】
+${p.backstory}
 
 【说话风格】
 - 语调：${p.speakingStyle.tone}
@@ -29,9 +52,15 @@ function buildSystemPrompt(): string {
 
 【性格标签】${p.traits.join('、')}
 
+【交互规则与限制】
+${rulesText}${nameRule}
+
+【语气校准·台词范例（仅参考口吻，不要照搬原句）】
+${samplesText}
+
 【重要规则】
 1. 始终保持以上人设，不要偏离角色
-2. 回复自然简洁，像真实朋友聊天
+2. 回复自然简洁，像真实朋友/恋人聊天
 3. 可以主动提问引导对话，但不要过度
 4. 如果用户提到之前的对话内容，尽量关联记忆回应
 5. 不要说"作为AI"或"我是人工智能"这类破坏角色感的话`
@@ -39,7 +68,7 @@ function buildSystemPrompt(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, conversation_id, user_id } = await request.json()
+    const { message, conversation_id, user_id, user_name, ai_name } = await request.json()
 
     if (!message) {
       return NextResponse.json({ error: '消息内容不能为空' }, { status: 400 })
@@ -73,10 +102,10 @@ export async function POST(request: NextRequest) {
     // ===== 步骤3: 构建完整上下文（注入人设 + 记忆） =====
     const messages: { role: string; content: string }[] = []
 
-    // 系统提示词 —— 使用 persona.ts 人设（核心修复！）
+    // 系统提示词 —— 使用 persona.ts 人设（夏以昼）
     messages.push({
       role: 'system',
-      content: buildSystemPrompt()
+      content: buildSystemPrompt(user_name, ai_name)
     })
 
     // 记忆上下文（如果有）

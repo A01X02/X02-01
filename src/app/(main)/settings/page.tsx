@@ -174,6 +174,8 @@ export default function SettingsPage() {
           .from('profiles')
           .upsert({ id: user.id, display_name: displayName.trim() }, { onConflict: 'id' })
         if (error) throw error
+        // 同步到 localStorage，供聊天页把用户名传给模型
+        localStorage.setItem('user_display_name', displayName.trim())
         toast.success('昵称已更新')
       } else if (editingName === 'ai' && aiName.trim()) {
         localStorage.setItem('ai_display_name', aiName.trim())

@@ -12,6 +12,15 @@ import { onChatToggle } from '@/lib/events'
 /** 生成客户端临时 ID（无需服务端） */
 const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
+/** 从 localStorage 读取用户昵称 / AI 显示名，随聊天请求传给模型 */
+function getChatIdentity() {
+  if (typeof window === 'undefined') return {}
+  return {
+    user_name: localStorage.getItem('user_display_name') || undefined,
+    ai_name: localStorage.getItem('ai_display_name') || undefined
+  }
+}
+
 /** 每条 AI 消息最大重新生成次数 */
 const MAX_REGENERATE_COUNT = 10
 
@@ -162,6 +171,7 @@ export default function ChatPage() {
           message: lastUserMessage || '(请根据上下文重新回复)',
           conversation_id: conversationId || undefined,
           user_id: userId || undefined,
+          ...getChatIdentity(),
         })
       })
 
@@ -257,7 +267,8 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: content,
           conversation_id: conversationId || undefined,
-          user_id: userId || undefined
+          user_id: userId || undefined,
+          ...getChatIdentity(),
         })
       })
 
