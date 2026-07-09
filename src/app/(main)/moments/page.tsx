@@ -64,8 +64,8 @@ export default function MomentsPage() {
   return (
     <div className="h-screen overflow-y-auto bg-bg-gray">
       {/* 顶部 */}
-      <div className="bg-white border-b border-light-gray px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-dark-gray">朋友圈</h1>
+      <div className="glass safe-top border-b border-light-gray px-4 py-3 sticky top-0 z-10">
+        <h1 className="text-lg font-semibold text-dark-gray tracking-breath">朋友圈</h1>
       </div>
 
       {/* 发布按钮 */}

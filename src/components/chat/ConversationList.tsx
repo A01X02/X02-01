@@ -96,7 +96,7 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
 
       {/* 侧边栏 */}
-      <div className="relative w-72 bg-white h-full shadow-xl flex flex-col fade-in">
+      <div className="relative w-72 glass-strong h-full shadow-2xl flex flex-col fade-in safe-top">
         {/* 头部 */}
         <div className="px-4 py-4 border-b border-light-gray flex items-center justify-between">
           <h2 className="font-semibold text-dark-gray">对话列表</h2>
@@ -118,7 +118,7 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                 placeholder="对话标题..."
                 autoFocus
-                className="flex-1 bg-bg-gray rounded-lg px-3 py-2 text-sm outline-none text-dark-gray placeholder-medium-gray"
+                className="flex-1 glass-subtle rounded-xl px-3 py-2 text-sm outline-none text-dark-gray placeholder-medium-gray"
               />
               <button
                 onClick={handleCreate}
@@ -130,7 +130,7 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
           ) : (
             <button
               onClick={() => setShowNewInput(true)}
-              className="w-full flex items-center justify-center space-x-2 py-2 bg-bg-gray rounded-lg text-dark-gray text-sm"
+              className="w-full flex items-center justify-center space-x-2 py-2 glass-subtle rounded-xl text-dark-gray text-sm hover:border-primary-orange/40 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -153,8 +153,8 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
                 onClick={() => { onSelect(conv.id); onClose() }}
                 className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors ${
                   conv.id === currentConversationId
-                    ? 'bg-light-orange'
-                    : 'hover:bg-bg-gray'
+                    ? 'bg-primary-orange/10'
+                    : 'hover:bg-white/50'
                 }`}
               >
                 <div className="flex-1 min-w-0">

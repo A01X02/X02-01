@@ -57,13 +57,13 @@ export default function SettingsPage() {
   return (
     <div className="h-screen overflow-y-auto bg-bg-gray">
       {/* 顶部 */}
-      <div className="bg-white border-b border-light-gray px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-dark-gray">设置</h1>
+      <div className="glass safe-top border-b border-light-gray px-4 py-3 sticky top-0 z-10">
+        <h1 className="text-lg font-semibold text-dark-gray tracking-breath">设置</h1>
       </div>
 
       <div className="px-4 py-4 space-y-4">
         {/* 语音自动播放 */}
-        <div className="bg-white rounded-xl p-4">
+        <div className="glass rounded-2xl p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-dark-gray">语音自动播放</p>
@@ -82,7 +82,7 @@ export default function SettingsPage() {
         </div>
 
         {/* 字体大小 */}
-        <div className="bg-white rounded-xl p-4">
+        <div className="glass rounded-2xl p-5">
           <p className="font-medium text-dark-gray mb-3">字体大小</p>
           <div className="flex items-center space-x-3">
             <span className="text-xs text-medium-gray">小</span>
@@ -99,14 +99,14 @@ export default function SettingsPage() {
         </div>
 
         {/* 语音克隆 */}
-        <div className="bg-white rounded-xl p-4">
+        <div className="glass rounded-2xl p-5">
           <p className="font-medium text-dark-gray mb-1">语音克隆</p>
           <p className="text-xs text-medium-gray mb-4">录制你的声音，AI将用你的声音回复</p>
           <VoiceRecorder />
         </div>
 
         {/* 主题 */}
-        <div className="bg-white rounded-xl p-4">
+        <div className="glass rounded-2xl p-5">
           <p className="font-medium text-dark-gray mb-3">界面主题</p>
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -119,8 +119,8 @@ export default function SettingsPage() {
                 onClick={() => handleUpdate({ theme: theme.value as 'light' | 'dark' | 'auto' })}
                 className={`py-3 rounded-xl text-sm font-medium transition-all ${
                   settings?.theme === theme.value
-                    ? 'bg-primary-orange text-white'
-                    : 'bg-bg-gray text-dark-gray'
+                    ? 'bg-primary-orange text-white shadow-gold-glow'
+                    : 'glass-subtle text-dark-gray'
                 }`}
               >
                 {theme.label}
@@ -135,7 +135,7 @@ export default function SettingsPage() {
             await supabase.auth.signOut()
             window.location.href = '/'
           }}
-          className="w-full bg-white rounded-xl p-4 text-center text-deep-orange font-medium"
+          className="w-full glass rounded-2xl p-5 text-center text-deep-orange font-medium"
         >
           退出登录
         </button>

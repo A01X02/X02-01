@@ -85,8 +85,8 @@ export default function MemoriesPage() {
   return (
     <div className="h-screen overflow-y-auto bg-bg-gray">
       {/* 顶部 */}
-      <div className="bg-white border-b border-light-gray px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-lg font-semibold text-dark-gray">AI记忆</h1>
+      <div className="glass safe-top border-b border-light-gray px-4 py-3 sticky top-0 z-10">
+        <h1 className="text-lg font-semibold text-dark-gray tracking-breath">AI记忆</h1>
       </div>
 
       {/* 统计卡片 */}
@@ -98,7 +98,7 @@ export default function MemoriesPage() {
             { key: 'fact', label: '事实', count: stats.fact, color: 'text-teal-500' },
             { key: 'event', label: '事件', count: stats.event, color: 'text-amber-500' },
           ].map((stat) => (
-            <div key={stat.key} className="bg-white rounded-xl p-3 text-center">
+            <div key={stat.key} className="glass rounded-2xl p-3 text-center">
               <p className={`text-xl font-bold ${stat.color}`}>{stat.count}</p>
               <p className="text-xs text-medium-gray">{stat.label}</p>
             </div>
@@ -114,7 +114,7 @@ export default function MemoriesPage() {
           onChange={(e) => setSearch(e.target.value)}
           onKeyUp={(e) => e.key === 'Enter' && loadMemories()}
           placeholder="搜索记忆..."
-          className="w-full bg-white rounded-xl px-4 py-2.5 text-sm outline-none text-dark-gray placeholder-medium-gray"
+          className="w-full glass-subtle rounded-2xl px-4 py-2.5 text-sm outline-none text-dark-gray placeholder-medium-gray tracking-breath"
         />
         <div className="flex space-x-2 overflow-x-auto">
           {[
@@ -129,8 +129,8 @@ export default function MemoriesPage() {
               onClick={() => { setFilter(tab.key); setTimeout(loadMemories, 0) }}
               className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                 filter === tab.key
-                  ? 'bg-primary-orange text-white'
-                  : 'bg-white text-medium-gray'
+                  ? 'bg-primary-orange text-white shadow-gold-glow'
+                  : 'glass-subtle text-medium-gray'
               }`}
             >
               {tab.label}
@@ -152,7 +152,7 @@ export default function MemoriesPage() {
           memories.map((mem) => {
             const typeInfo = MEMORY_TYPE_LABELS[mem.memory_type] || { label: '其他', color: 'bg-gray-100 text-gray-600' }
             return (
-              <div key={mem.id} className="bg-white rounded-xl p-4 fade-in">
+              <div key={mem.id} className="glass rounded-2xl p-5 fade-in">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${typeInfo.color}`}>
@@ -198,7 +198,7 @@ export default function MemoriesPage() {
       {/* 添加记忆按钮 */}
       <button
         onClick={() => setShowAddModal(true)}
-        className="fixed bottom-20 right-4 w-14 h-14 bg-primary-orange rounded-full flex items-center justify-center shadow-lg hover:bg-deep-orange transition-colors z-20"
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 w-14 h-14 bg-primary-orange rounded-full flex items-center justify-center shadow-gold-glow hover:bg-deep-orange hover:shadow-gold-glow glow-pulse transition-all z-20"
       >
         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -208,9 +208,9 @@ export default function MemoriesPage() {
       {/* 添加记忆弹窗 */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-end justify-center" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white w-full max-w-md rounded-t-2xl p-6 fade-in" onClick={(e) => e.stopPropagation()}>
+          <div className="glass-strong safe-bottom w-full max-w-md rounded-t-2xl p-6 fade-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-dark-gray">添加记忆</h2>
+              <h2 className="text-lg font-semibold text-dark-gray tracking-breath">添加记忆</h2>
               <button onClick={() => setShowAddModal(false)} className="text-medium-gray">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -223,21 +223,21 @@ export default function MemoriesPage() {
                 onChange={(e) => setNewMemory({ ...newMemory, content: e.target.value })}
                 placeholder="记忆内容..."
                 rows={3}
-                className="w-full bg-bg-gray rounded-xl p-3 text-sm outline-none resize-none text-dark-gray placeholder-medium-gray"
+                className="w-full glass-subtle rounded-2xl p-4 text-sm outline-none resize-none text-dark-gray placeholder-medium-gray tracking-breath"
                 required
               />
               <div className="grid grid-cols-2 gap-3">
                 <select
                   value={newMemory.memory_type}
                   onChange={(e) => setNewMemory({ ...newMemory, memory_type: e.target.value })}
-                  className="bg-bg-gray rounded-xl p-3 text-sm outline-none text-dark-gray"
+                  className="glass-subtle rounded-2xl p-3 text-sm outline-none text-dark-gray tracking-breath"
                 >
                   <option value="preference">偏好</option>
                   <option value="fact">事实</option>
                   <option value="event">事件</option>
                   <option value="summary">摘要</option>
                 </select>
-                <div className="flex items-center bg-bg-gray rounded-xl px-3">
+                <div className="flex items-center glass-subtle rounded-2xl px-3">
                   <span className="text-sm text-medium-gray">重要度</span>
                   <input
                     type="range"
@@ -255,12 +255,12 @@ export default function MemoriesPage() {
                 value={newMemory.tags}
                 onChange={(e) => setNewMemory({ ...newMemory, tags: e.target.value })}
                 placeholder="标签（逗号分隔）"
-                className="w-full bg-bg-gray rounded-xl p-3 text-sm outline-none text-dark-gray placeholder-medium-gray"
+                className="w-full glass-subtle rounded-2xl p-4 text-sm outline-none text-dark-gray placeholder-medium-gray tracking-breath"
               />
               <button
                 type="submit"
                 disabled={!newMemory.content.trim()}
-                className="w-full bg-primary-orange text-white py-3 rounded-xl font-medium hover:bg-deep-orange transition-colors disabled:opacity-50"
+                className="w-full bg-primary-orange text-white py-3 rounded-2xl font-medium hover:bg-deep-orange hover:shadow-gold-glow transition-all disabled:opacity-50"
               >
                 保存记忆
               </button>

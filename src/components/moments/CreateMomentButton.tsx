@@ -57,7 +57,7 @@ export default function CreateMomentButton({ onSuccess }: CreateMomentButtonProp
       {/* 发布按钮 */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-4 w-14 h-14 bg-primary-orange rounded-full flex items-center justify-center shadow-lg hover:bg-deep-orange transition-colors z-20"
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 w-14 h-14 bg-primary-orange rounded-full flex items-center justify-center shadow-gold-glow hover:bg-deep-orange hover:shadow-gold-glow glow-pulse transition-all z-20"
       >
         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -68,11 +68,11 @@ export default function CreateMomentButton({ onSuccess }: CreateMomentButtonProp
       {isOpen && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-end justify-center" onClick={() => setIsOpen(false)}>
           <div
-            className="bg-white w-full max-w-md rounded-t-2xl p-6 fade-in"
+            className="glass-strong safe-bottom w-full max-w-md rounded-t-2xl p-6 fade-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-dark-gray">发布动态</h2>
+              <h2 className="text-lg font-semibold text-dark-gray tracking-breath">发布动态</h2>
               <button onClick={() => setIsOpen(false)} className="text-medium-gray">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -87,7 +87,7 @@ export default function CreateMomentButton({ onSuccess }: CreateMomentButtonProp
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="分享点什么..."
                 rows={4}
-                className="w-full bg-bg-gray rounded-xl p-3 text-sm outline-none resize-none text-dark-gray placeholder-medium-gray"
+                className="w-full glass-subtle rounded-2xl p-4 text-sm outline-none resize-none text-dark-gray placeholder-medium-gray tracking-breath"
               />
 
               {/* 图片URL */}
@@ -96,7 +96,7 @@ export default function CreateMomentButton({ onSuccess }: CreateMomentButtonProp
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="图片URL（可选）"
-                className="w-full bg-bg-gray rounded-xl p-3 text-sm outline-none text-dark-gray placeholder-medium-gray"
+                className="w-full glass-subtle rounded-2xl p-4 text-sm outline-none text-dark-gray placeholder-medium-gray tracking-breath"
               />
 
               {/* AI标记 */}
@@ -114,7 +114,7 @@ export default function CreateMomentButton({ onSuccess }: CreateMomentButtonProp
               <button
                 type="submit"
                 disabled={!content.trim() || loading}
-                className="w-full bg-primary-orange text-white py-3 rounded-xl font-medium hover:bg-deep-orange transition-colors disabled:opacity-50"
+                className="w-full bg-primary-orange text-white py-3 rounded-2xl font-medium hover:bg-deep-orange hover:shadow-gold-glow transition-all disabled:opacity-50"
               >
                 {loading ? '发布中...' : '发布'}
               </button>

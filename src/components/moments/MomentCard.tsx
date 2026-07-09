@@ -115,7 +115,7 @@ export default function MomentCard({ moment, onUpdate }: MomentCardProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl p-4 fade-in">
+    <div className="glass rounded-2xl p-5 fade-in">
       {/* 用户信息 */}
       <div className="flex items-center space-x-3 mb-3">
         <div className="w-10 h-10 rounded-full bg-primary-orange flex items-center justify-center overflow-hidden">
@@ -225,12 +225,12 @@ export default function MomentCard({ moment, onUpdate }: MomentCardProps) {
 
           {/* 评论输入 */}
           <form onSubmit={handleSubmitComment} className="flex items-center space-x-2">
-            <input
+              <input
               type="text"
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
               placeholder="写评论..."
-              className="flex-1 bg-bg-gray rounded-full px-4 py-2 text-sm outline-none text-dark-gray placeholder-medium-gray"
+              className="flex-1 glass-subtle rounded-full px-4 py-2 text-sm outline-none text-dark-gray placeholder-medium-gray tracking-breath"
             />
             <button
               type="submit"

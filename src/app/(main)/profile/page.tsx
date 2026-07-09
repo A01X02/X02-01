@@ -91,7 +91,7 @@ export default function ProfilePage() {
   return (
     <div className="h-screen overflow-y-auto bg-bg-gray">
       {/* 头部 */}
-      <div className="bg-white px-4 py-6 border-b border-light-gray">
+      <div className="glass safe-top px-4 py-6 border-b border-light-gray">
         <div className="flex items-center space-x-4">
           <div className="w-16 h-16 rounded-full bg-primary-orange flex items-center justify-center overflow-hidden">
             {profile?.avatar_url ? (
@@ -112,8 +112,8 @@ export default function ProfilePage() {
       </div>
 
       {/* 聊天主题选择 */}
-      <div className="mt-4 bg-white px-4 py-4">
-        <h3 className="font-semibold text-dark-gray mb-3">聊天主题</h3>
+      <div className="mt-4 glass rounded-2xl mx-4 px-5 py-5">
+        <h3 className="font-semibold text-dark-gray mb-3 tracking-breath">聊天主题</h3>
         <div className="grid grid-cols-3 gap-3">
           {themes.length === 0 ? (
             <p className="col-span-3 text-sm text-medium-gray text-center py-4">暂无主题</p>
@@ -141,8 +141,8 @@ export default function ProfilePage() {
       </div>
 
       {/* 语音配置 */}
-      <div className="mt-4 bg-white px-4 py-4">
-        <h3 className="font-semibold text-dark-gray mb-3">语音配置</h3>
+      <div className="mt-4 glass rounded-2xl mx-4 px-5 py-5">
+        <h3 className="font-semibold text-dark-gray mb-3 tracking-breath">语音配置</h3>
         <div className="space-y-2">
           {voices.length === 0 ? (
             <p className="text-sm text-medium-gray text-center py-4">暂无语音配置</p>
@@ -153,8 +153,8 @@ export default function ProfilePage() {
                 onClick={() => handleSelectVoice(voice.id)}
                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${
                   selectedVoice === voice.id
-                    ? 'bg-light-orange border border-primary-orange'
-                    : 'bg-bg-gray'
+                    ? 'bg-primary-orange/10 border border-primary-orange'
+                    : 'glass-subtle'
                 }`}
               >
                 <div className="flex items-center space-x-3">
@@ -182,8 +182,8 @@ export default function ProfilePage() {
       </div>
 
       {/* 设置入口 */}
-      <div className="mt-4 bg-white">
-        <Link href="/settings" className="flex items-center justify-between px-4 py-4 border-b border-light-gray">
+      <div className="mt-4 glass rounded-2xl mx-4 overflow-hidden">
+        <Link href="/settings" className="flex items-center justify-between px-5 py-5 border-b border-light-gray">
           <span className="text-dark-gray">设置</span>
           <svg className="w-5 h-5 text-medium-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

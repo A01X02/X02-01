@@ -162,9 +162,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-bg-gray">
+    <div className="flex flex-col h-screen tech-bg tech-grid relative">
       {/* 顶部导航 */}
-      <div className="bg-white border-b border-light-gray px-4 py-3 flex items-center justify-between">
+      <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10">
         <button
           onClick={() => setShowConvList(true)}
           className="text-dark-gray"
@@ -174,13 +174,13 @@ export default function ChatPage() {
           </svg>
         </button>
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-full bg-primary-orange flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
             <span className="text-white text-sm font-semibold">AI</span>
           </div>
           <div>
-            <h1 className="font-semibold text-dark-gray text-sm">智能助手</h1>
+            <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
             <div className="flex items-center space-x-1">
-              <div className="w-1.5 h-1.5 bg-teal-500 rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
               <p className="text-xs text-medium-gray">在线</p>
               {memoriesUsed > 0 && (
                 <span className="text-xs text-deep-orange ml-1">
@@ -194,7 +194,7 @@ export default function ChatPage() {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-5 relative">
         {messages.length === 0 && !loading && (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto bg-light-orange rounded-full flex items-center justify-center mb-3">
@@ -206,12 +206,14 @@ export default function ChatPage() {
             <p className="text-medium-gray text-xs mt-1">AI会自动记住你的偏好和重要信息</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <ChatBubble key={msg.id} message={msg} />
-        ))}
+        {messages.map((msg, i) => {
+          const prev = messages[i - 1]
+          const grouped = prev && prev.role === msg.role
+          return <ChatBubble key={msg.id} message={msg} grouped={grouped} />
+        })}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-light-gray rounded-2xl px-4 py-3">
+            <div className="glass-subtle rounded-2xl px-4 py-3">
               <div className="flex space-x-2">
                 <div className="w-2 h-2 bg-medium-gray rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-medium-gray rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>

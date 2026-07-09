@@ -119,7 +119,7 @@ export default function VoiceRecorder() {
         value={voiceName}
         onChange={(e) => setVoiceName(e.target.value)}
         placeholder="给这个声音起个名字..."
-        className="w-full bg-bg-gray rounded-xl p-3 text-sm outline-none text-dark-gray placeholder-medium-gray"
+        className="w-full glass-subtle rounded-2xl p-4 text-sm outline-none text-dark-gray placeholder-medium-gray tracking-breath"
       />
 
       {/* 录音按钮 */}
@@ -153,7 +153,7 @@ export default function VoiceRecorder() {
           <button
             onClick={uploadVoice}
             disabled={isUploading || !voiceName.trim()}
-            className="w-full bg-primary-orange text-white py-2.5 rounded-xl font-medium hover:bg-deep-orange transition-colors disabled:opacity-50"
+            className="w-full bg-primary-orange text-white py-3 rounded-2xl font-medium hover:bg-deep-orange hover:shadow-gold-glow transition-all disabled:opacity-50"
           >
             {isUploading ? '上传中...' : '上传克隆样本'}
           </button>

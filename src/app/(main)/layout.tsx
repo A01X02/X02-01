@@ -51,14 +51,14 @@ export default function MainLayout({
   ]
 
   return (
-    <div className="max-w-md mx-auto h-screen flex flex-col bg-bg-gray shadow-2xl">
+    <div className="max-w-md mx-auto h-screen flex flex-col bg-bg-gray shadow-2xl relative">
       {/* 主内容区域 */}
       <div className="flex-1 overflow-hidden">
         {children}
       </div>
 
       {/* 底部导航栏 */}
-      <nav className="bg-white border-t border-light-gray">
+      <nav className="glass safe-bottom border-t border-light-gray">
         <div className="flex justify-around">
           {navItems.map((item) => {
             const isActive = pathname === item.href
@@ -67,7 +67,7 @@ export default function MainLayout({
                 key={item.href}
                 href={item.href}
                 className={`flex flex-col items-center py-2 px-4 transition-colors ${
-                  isActive ? 'text-primary-orange' : 'text-medium-gray'
+                  isActive ? 'text-primary-orange font-semibold' : 'text-medium-gray'
                 }`}
               >
                 {item.icon}
