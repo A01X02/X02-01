@@ -1,0 +1,21 @@
+# 依赖与构建产物（由 npm ci / next build 重新生成，不进构建上下文）
+node_modules
+.next
+out
+dist
+
+# 版本控制与本地配置
+.git
+.gitignore
+.env
+.env.local
+.env*.local
+
+# 文档与脚本（构建不需要）
+docs
+scripts
+*.md
+
+# 系统文件
+.DS_Store
+Thumbs.db
