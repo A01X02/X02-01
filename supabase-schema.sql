@@ -1,7 +1,6 @@
 -- ============================================================
--- AI Chatbot 数据库 Schema
+-- AI Chatbot 数据库 Schema（幂等版，可重复执行）
 -- 在 Supabase Dashboard → SQL Editor 中执行此文件
--- 执行前确保已创建项目（免费即可）
 -- ============================================================
 
 -- 启用 UUID 扩展
@@ -25,9 +24,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "公开查看资料" ON public.profiles;
 CREATE POLICY "公开查看资料" ON public.profiles FOR SELECT USING (true);
+DROP POLICY IF EXISTS "用户可更新自己的资料" ON public.profiles;
 CREATE POLICY "用户可更新自己的资料" ON public.profiles
   FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "用户可插入自己的资料" ON public.profiles;
 CREATE POLICY "用户可插入自己的资料" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
@@ -60,10 +62,13 @@ CREATE TABLE IF NOT EXISTS public.conversations (
 
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "用户可查看自己的对话" ON public.conversations;
 CREATE POLICY "用户可查看自己的对话" ON public.conversations
   FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "用户可创建对话" ON public.conversations;
 CREATE POLICY "用户可创建对话" ON public.conversations
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "用户可更新自己的对话" ON public.conversations;
 CREATE POLICY "用户可更新自己的对话" ON public.conversations
   FOR UPDATE USING (auth.uid() = user_id);
 
@@ -84,17 +89,18 @@ CREATE TABLE IF NOT EXISTS public.messages (
 
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "用户可通过对话查看消息" ON public.messages;
 CREATE POLICY "用户可通过对话查看消息" ON public.messages
   FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.conversations WHERE id = conversation_id AND user_id = auth.uid())
   );
+DROP POLICY IF EXISTS "用户可在自己的对话中插入消息" ON public.messages;
 CREATE POLICY "用户可在自己的对话中插入消息" ON public.messages
   FOR INSERT WITH CHECK (
     EXISTS (SELECT 1 FROM public.conversations WHERE id = conversation_id AND user_id = auth.uid())
   );
 
--- 索引：加速查询
-CREATE INDEX idx_messages_conversation ON public.messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON public.messages(conversation_id, created_at);
 
 -- ============================================================
 -- 4. 朋友圈动态 moments（核心表）
@@ -116,16 +122,20 @@ CREATE TABLE IF NOT EXISTS public.moments (
 
 ALTER TABLE public.moments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "所有人可查看动态" ON public.moments;
 CREATE POLICY "所有人可查看动态" ON public.moments FOR SELECT USING (true);
+DROP POLICY IF EXISTS "登录用户可发动态" ON public.moments;
 CREATE POLICY "登录用户可发动态" ON public.moments
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "作者可更新自己的动态" ON public.moments;
 CREATE POLICY "作者可更新自己的动态" ON public.moments
   FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "作者可删除自己的动态" ON public.moments;
 CREATE POLICY "作者可删除自己的动态" ON public.moments
   FOR DELETE USING (auth.uid() = user_id);
 
-CREATE INDEX idx_moments_created ON public.moments(created_at DESC);
-CREATE INDEX idx_moments_user ON public.moments(user_id);
+CREATE INDEX IF NOT EXISTS idx_moments_created ON public.moments(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_moments_user ON public.moments(user_id);
 
 -- ============================================================
 -- 5. 点赞 likes
@@ -140,6 +150,7 @@ CREATE TABLE IF NOT EXISTS public.likes (
 
 ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "登录用户可点赞/取消赞" ON public.likes;
 CREATE POLICY "登录用户可点赞/取消赞" ON public.likes
   FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
@@ -157,11 +168,13 @@ CREATE TABLE IF NOT EXISTS public.comments (
 
 ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "所有人可查看评论" ON public.comments;
 CREATE POLICY "所有人可查看评论" ON public.comments FOR SELECT USING (true);
+DROP POLICY IF EXISTS "登录用户可评论" ON public.comments;
 CREATE POLICY "登录用户可评论" ON public.comments
   FOR ALL USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
 
-CREATE INDEX idx_comments_moment ON public.comments(moment_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_moment ON public.comments(moment_id, created_at);
 
 -- ============================================================
 -- 7. 记忆 memories（AI记忆系统）
@@ -182,10 +195,11 @@ CREATE TABLE IF NOT EXISTS public.memories (
 
 ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "用户可管理自己的记忆" ON public.memories;
 CREATE POLICY "用户可管理自己的记忆" ON public.memories
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
-CREATE INDEX idx_memories_user ON public.memories(user_id, importance DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_user ON public.memories(user_id, importance DESC);
 
 -- ============================================================
 -- 8. 用户设置 user_settings
@@ -204,6 +218,7 @@ CREATE TABLE IF NOT EXISTS public.user_settings (
 
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "用户可管理自己的设置" ON public.user_settings;
 CREATE POLICY "用户可管理自己的设置" ON public.user_settings
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
@@ -226,7 +241,9 @@ CREATE TABLE IF NOT EXISTS public.chat_themes (
 
 ALTER TABLE public.chat_themes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "公开查看主题" ON public.chat_themes;
 CREATE POLICY "公开查看主题" ON public.chat_themes FOR SELECT USING (is_public = true OR created_by = auth.uid());
+DROP POLICY IF EXISTS "认证用户可创建主题" ON public.chat_themes;
 CREATE POLICY "认证用户可创建主题" ON public.chat_themes
   FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
@@ -247,6 +264,7 @@ CREATE TABLE IF NOT EXISTS public.voice_profiles (
 
 ALTER TABLE public.voice_profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "用户可管理自己的语音" ON public.voice_profiles;
 CREATE POLICY "用户可管理自己的语音" ON public.voice_profiles
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
@@ -255,4 +273,5 @@ CREATE POLICY "用户可管理自己的语音" ON public.voice_profiles
 -- ============================================================
 -- 执行后，朋友圈页面将不再报错（会显示空状态「还没有动态」）
 -- 后续通过 /api/auto-post 接口或手动发圈来填充数据
+-- 本文件为幂等版本，可安全重复执行
 -- ============================================================

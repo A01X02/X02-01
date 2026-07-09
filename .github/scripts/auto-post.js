@@ -11,7 +11,7 @@
  *   MODEL_ID              - 可选，默认 ep-20260709001000-997r8
  */
 
-const DOUBAO_API_KEY = process.env.DOBBBAAOPIKEY || process.env.DOUBAO_API_KEY
+const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY
 const DOUBAO_API_ENDPOINT = process.env.DOUBAO_API_ENDPOINT || 'https://ark.cn-beijing.volces.com/api/v3'
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
@@ -117,15 +117,14 @@ function extractImageKeywords(content, slot) {
 // ============================================================
 // Supabase 辅助
 // ============================================================
-async function supabaseQuery(path, options = {}) {
-  const url = `${SUPABASE_URL}/rest/v1/${path}`
-  const headers = {
-    'apikey': SUPABASE_SERVICE_KEY,
-    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  }
-  const res = await fetch(url, { ...options, headers })
+async function supabaseQuery(path, { method = 'GET', headers = {}, params } = {}) {
+  let url = `${SUPABASE_URL}/rest/v1/${path}`
+  if (params) url += `?${params}`
+  const res = await fetch(url, {
+    method,
+    headers,
+    signal: AbortSignal.timeout(15000)
+  })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Supabase ${res.status}: ${body}`)

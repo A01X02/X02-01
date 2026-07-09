@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       slot:
-        description '时间段: morning 或 evening'
+        description: '时间段: morning 或 evening'
         required: false
         default: 'morning'
 
