@@ -11,6 +11,66 @@ import {
   generateConversationSummary
 } from '@/lib/memory'
 
+// —— 火山 TTS 配置（用于 Bot 语音消息）——
+const VOLC_TTS_APPID = process.env.VOLC_TTS_APPID
+const VOLC_TTS_API_KEY = process.env.VOLC_TTS_ACCESS_TOKEN
+const VOLC_TTS_CLUSTER = process.env.VOLC_TTS_CLUSTER || 'volcano_icl'
+const VOLC_TTS_VOICE_ID = process.env.VOLC_TTS_VOICE_ID
+const VOLC_TTS_ENDPOINT = 'https://openspeech.bytedance.com/api/v1/tts'
+
+/** Bot 发语音的概率（约 18%，即平均每 5~6 条回复出现一条语音） */
+const VOICE_MESSAGE_PROBABILITY = 0.18
+
+/**
+ * 调用火山 TTS 合成音频（与 api/voice/route.ts 共享同一套鉴权逻辑）
+ */
+async function synthesizeVoice(text: string): Promise<string | null> {
+  if (!VOLC_TTS_API_KEY || !VOLC_TTS_VOICE_ID) return null
+
+  const reqid =
+    globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+  const body: Record<string, any> = {
+    app: {
+      ...(VOLC_TTS_APPID ? { appid: VOLC_TTS_APPID } : {}),
+      cluster: VOLC_TTS_CLUSTER,
+    },
+    user: { uid: 'ai-companion' },
+    audio: {
+      voice_type: VOLC_TTS_VOICE_ID,
+      encoding: 'mp3',
+      speed_ratio: 1.0,
+    },
+    request: {
+      reqid,
+      text: text.slice(0, 300),
+      operation: 'query',
+    },
+  }
+
+  try {
+    const resp = await fetch(VOLC_TTS_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': VOLC_TTS_API_KEY,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const result = await resp.json().catch(() => null)
+    if (result && result.code === 3000 && result.data) {
+      return `data:audio/mp3;base64,${result.data}`
+    }
+
+    console.warn('[Chat] TTS合成失败:', result?.message || result?.code || '未知错误')
+    return null
+  } catch (err) {
+    console.warn('[Chat] TTS请求异常:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 const MODEL_ID = process.env.DOUBAO_MODEL_ID || 'ep-20260709001000-997r8'
 const MEMORY_EXTRACTION_INTERVAL = 6
 const SUMMARY_THRESHOLD = 15
@@ -150,6 +210,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ===== 步骤4.5: 随机决定是否以语音消息形式发送（仿微信） =====
+    let isVoice = false
+    let voiceUrl: string | null = null
+    if (reply && VOLC_TTS_API_KEY && VOLC_TTS_VOICE_ID) {
+      // 随机概率决定是否发语音（约18%）
+      if (Math.random() < VOICE_MESSAGE_PROBABILITY) {
+        voiceUrl = await synthesizeVoice(reply)
+        if (voiceUrl) {
+          isVoice = true
+        }
+      }
+    }
+
     // ===== 步骤5: 异步触发记忆提取与摘要（容错） =====
     if (user_id && conversation_id) {
       // 使用 fire-and-forget，不阻塞响应
@@ -219,6 +292,8 @@ export async function POST(request: NextRequest) {
       success: true,
       reply,
       conversation_id,
+      is_voice: isVoice,
+      voice_url: voiceUrl,
       meta: {
         memories_used: memoriesUsed,
         history_length: history.length

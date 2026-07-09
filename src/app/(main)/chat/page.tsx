@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Message } from '@/types'
 import ChatBubble from '@/components/chat/ChatBubble'
+import VoiceMessageBubble from '@/components/chat/VoiceMessageBubble'
 import ChatInput from '@/components/chat/ChatInput'
 import ConversationList from '@/components/chat/ConversationList'
 import { toast } from 'react-hot-toast'
@@ -64,6 +65,8 @@ export default function ChatPage() {
   // 复用同一个 audio 元素（移动端一旦在手势内播放过一次，之后可编程播放）
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioUnlockedRef = useRef(false)
+  // 是否已提示用户点击启用语音（移动端首次需要手势解锁）
+  const [showVoiceHint, setShowVoiceHint] = useState(false)
 
   /** 获取（惰性创建）持久化音频元素 */
   const getAudioEl = useCallback(() => {
@@ -121,6 +124,37 @@ export default function ChatPage() {
       sessionStorage.setItem('chat_header_mode', headerMode)
     }
   }, [headerMode])
+
+  // ===== 全局触屏/点击解锁音频（移动端自动播放关键） =====
+  // 手机浏览器要求音频播放必须由用户手势触发；这里在任何触屏/点击时都尝试解锁
+  useEffect(() => {
+    if (typeof window === 'undefined' || audioUnlockedRef.current) return
+
+    const handleFirstInteraction = () => {
+      unlockAudio()
+      // 移除监听（只需解锁一次）
+      document.removeEventListener('touchstart', handleFirstInteraction)
+      document.removeEventListener('click', handleFirstInteraction)
+    }
+
+    document.addEventListener('touchstart', handleFirstInteraction, { once: true })
+    document.addEventListener('click', handleFirstInteraction, { once: true })
+
+    return () => {
+      document.removeEventListener('touchstart', handleFirstInteraction)
+      document.removeEventListener('click', handleFirstInteraction)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 自动朗读开关开着但尚未解锁 → 显示轻量提示
+  useEffect(() => {
+    if (isAutoPlayOn() && !audioUnlockedRef.current && authReady) {
+      const timer = setTimeout(() => setShowVoiceHint(true), 2000)
+      return () => clearTimeout(timer)
+    }
+    setShowVoiceHint(false)
+  }, [authReady])
 
   useEffect(() => {
     if (skipAutoScrollRef.current) {
@@ -488,13 +522,14 @@ export default function ChatPage() {
 
       const data = await response.json()
 
-      // ===== ③ 显示 AI 回复 =====
+      // ===== ③ 显示 AI 回复（支持文字 / 语音消息） =====
       const aiMessage: Message = {
         id: tempId(),
         conversation_id: conversationId || tempId(),
         role: 'assistant',
         content: data.reply || data.error || '抱歉，暂时无法回复。',
-        message_type: 'text',
+        message_type: data.is_voice ? 'voice' : 'text',
+        ...(data.voice_url ? { voice_url: data.voice_url } : {}),
         created_at: new Date().toISOString()
       }
       setMessages(prev => [...prev, aiMessage])
@@ -504,7 +539,20 @@ export default function ChatPage() {
 
       // ===== 自动朗读（若开关已开且有真实回复） =====
       if (isAutoPlayOn() && data.reply) {
-        speak(aiMessage.id, aiMessage.content)
+        // 语音消息：直接用自带的音频 URL 播放（无需再调 TTS）
+        if (data.is_voice && data.voice_url) {
+          const el = getAudioEl()
+          if (el) {
+            el.muted = false
+            el.src = data.voice_url
+            el.currentTime = 0
+            setSpeakingId(aiMessage.id)
+            el.play().catch(() => setSpeakingId(null))
+          }
+        } else {
+          // 文字消息：调 TTS 转语音后播放
+          speak(aiMessage.id, aiMessage.content)
+        }
       }
 
       // ===== ④ 异步持久化到 DB =====
@@ -524,7 +572,8 @@ export default function ChatPage() {
             conversation_id: conversationId,
             role: 'assistant',
             content: aiMessage.content,
-            message_type: 'text'
+            message_type: aiMessage.message_type || 'text',
+            ...(aiMessage.voice_url ? { voice_url: aiMessage.voice_url } : {})
           })
 
           await supabase
@@ -552,6 +601,25 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full tech-bg tech-grid relative">
+      {/* 移动端首次语音提示：点击任意位置解锁音频 */}
+      {showVoiceHint && (
+        <div
+          className="absolute inset-0 z-50 bg-black/30 flex items-center justify-center backdrop-blur-sm"
+          onClick={() => { unlockAudio(); setShowVoiceHint(false) }}
+          onTouchStart={() => { unlockAudio(); setShowVoiceHint(false) }}
+        >
+          <div className="bg-white rounded-2xl px-6 py-4 shadow-xl text-center max-w-[260px] animate-in fade-in zoom-in duration-300">
+            <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-light-orange/20 flex items-center justify-center">
+              <svg className="w-6 h-6 text-deep-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-dark-gray">启用语音播放</p>
+            <p className="text-xs text-medium-gray mt-1">点击屏幕任意位置</p>
+          </div>
+        </div>
+      )}
+
       {/* 顶部导航 —— 始终渲染，headerMode 只控制内部元素显隐 */}
       <div className="bg-white/80 safe-top border-b border-light-gray/60 px-4 py-3 flex items-center justify-between relative z-10 min-h-[52px] shrink-0 backdrop-blur-xl">
         {/* full 模式：显示汉堡菜单 + AI 信息 */}
@@ -632,6 +700,20 @@ export default function ChatPage() {
         {messages.map((msg, i) => {
           const prev = messages[i - 1]
           const grouped = prev && prev.role === msg.role
+
+          // 语音消息 → 用微信风格语音气泡
+          if (msg.message_type === 'voice' && msg.voice_url) {
+            return (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-2`}>
+                <VoiceMessageBubble
+                  audioUrl={msg.voice_url}
+                  text={msg.content}
+                  isFromAI={msg.role === 'assistant'}
+                />
+              </div>
+            )
+          }
+
           return (
             <ChatBubble
               key={msg.id}
