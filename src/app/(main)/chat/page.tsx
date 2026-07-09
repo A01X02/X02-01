@@ -156,12 +156,17 @@ export default function ChatPage() {
     setLoading(true)
     setMemoriesUsed(0)
 
-    await supabase.from('messages').insert({
-      conversation_id: conversationId,
-      role: 'user',
-      content,
-      message_type: 'text'
-    }).catch(err => console.warn('写入用户消息到DB失败(非致命):', err.message))
+    // 写入用户消息到DB（非致命，失败不阻塞聊天）
+    try {
+      await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        role: 'user',
+        content,
+        message_type: 'text'
+      })
+    } catch (dbErr: unknown) {
+      console.warn('写入用户消息到DB失败(非致命):', dbErr instanceof Error ? dbErr.message : String(dbErr))
+    }
 
     try {
       const response = await fetch('/api/chat', {

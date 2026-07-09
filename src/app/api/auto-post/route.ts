@@ -72,7 +72,7 @@ function fetchFromPicsum(): PhotoResult {
  */
 async function getRandomPhoto(contextHint?: string): Promise<PhotoResult> {
   // 优先尝试 Unsplash
-  const unsplash = await fetchFromUnsplash(contextHint)
+  const unsplash = await fetchFromUnsplash(contextHint || '')
   if (unsplash) return unsplash
 
   // 降级到 Picsum（永远可用）
