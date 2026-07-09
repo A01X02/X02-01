@@ -2,7 +2,8 @@
 
 import { ReactNode } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { emitChatToggle } from '@/lib/events'
 
 export default function MainLayout({
   children,
@@ -10,6 +11,7 @@ export default function MainLayout({
   children: ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
 
   const navItems = [
     {
@@ -50,6 +52,18 @@ export default function MainLayout({
     }
   ]
 
+  /** 处理导航点击：已激活的 tab 发送切换事件而非跳转 */
+  const handleNavClick = (href: string) => {
+    if (pathname === href) {
+      // 点击已激活的 tab → 切换模式（不刷新页面）
+      if (href === '/chat') {
+        emitChatToggle()
+      }
+    } else {
+      router.push(href)
+    }
+  }
+
   return (
     <div className="max-w-md mx-auto h-screen flex flex-col bg-bg-gray shadow-2xl relative">
       {/* 主内容区域 */}
@@ -63,16 +77,16 @@ export default function MainLayout({
           {navItems.map((item) => {
             const isActive = pathname === item.href
             return (
-              <Link
+              <button
                 key={item.href}
-                href={item.href}
+                onClick={() => handleNavClick(item.href)}
                 className={`flex flex-col items-center py-2 px-4 transition-colors ${
                   isActive ? 'text-primary-orange font-semibold' : 'text-medium-gray'
                 }`}
               >
                 {item.icon}
                 <span className="text-xs mt-1">{item.label}</span>
-              </Link>
+              </button>
             )
           })}
         </div>

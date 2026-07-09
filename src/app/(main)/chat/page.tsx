@@ -7,9 +7,13 @@ import ChatBubble from '@/components/chat/ChatBubble'
 import ChatInput from '@/components/chat/ChatInput'
 import ConversationList from '@/components/chat/ConversationList'
 import { toast } from 'react-hot-toast'
+import { onChatToggle } from '@/lib/events'
 
 /** 生成客户端临时 ID（无需服务端） */
 const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+/** 每条 AI 消息最大重新生成次数 */
+const MAX_REGENERATE_COUNT = 10
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -25,7 +29,21 @@ export default function ChatPage() {
   const [showConvList, setShowConvList] = useState(false)
   const [memoriesUsed, setMemoriesUsed] = useState(0)
   const [authReady, setAuthReady] = useState(false)
+
+  // 头部显示模式：'full' = 完整头部(汉堡+AI信息) | 'minimal' = 仅输入框
+  const [headerMode, setHeaderMode] = useState<'full' | 'minimal'>('full')
+
+  // 记录每条消息的重新生成次数
+  const [regenerateCounts, setRegenerateCounts] = useState<Record<string, number>>({})
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // 监听底部导航栏的切换事件
+  useEffect(() => {
+    return onChatToggle(() => {
+      setHeaderMode(prev => prev === 'full' ? 'minimal' : 'full')
+    })
+  }, [])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -38,11 +56,9 @@ export default function ChatPage() {
     let cancelled = false
     ;(async () => {
       try {
-        // Step 1: 检查已有用户
         let { data: { user } } = await supabase.auth.getUser()
 
         if (!user) {
-          // Step 2: 尝试匿名登录
           const { data: authData, error: anonError } = await supabase.auth.signInAnonymously()
           if (!cancelled && authData?.user && !anonError) {
             user = authData.user
@@ -56,7 +72,6 @@ export default function ChatPage() {
           console.log('[Chat] 已有用户:', user.id.slice(0, 8))
         }
 
-        // Step 3: 如果有有效用户，同步/创建服务端会话
         if (user && !cancelled) {
           const { data: conversations, error: convError } = await supabase
             .from('conversations')
@@ -66,12 +81,10 @@ export default function ChatPage() {
             .limit(1)
 
           if (!convError && conversations && conversations.length > 0) {
-            // 有历史会话 → 使用服务端 ID（消息可持久化）
             setConversationId(conversations[0].id)
-            localStorage.removeItem('temp_conv_id') // 清掉临时 ID
+            localStorage.removeItem('temp_conv_id')
             loadMessages(conversations[0].id)
           } else if (!convError) {
-            // 无历史会话 → 创建新的
             const { data: newConv, error: insertError } = await supabase
               .from('conversations')
               .insert({ user_id: user.id, title: '新对话' })
@@ -82,7 +95,6 @@ export default function ChatPage() {
               setConversationId(newConv.id)
               localStorage.removeItem('temp_conv_id')
             }
-            // 创建失败也不阻塞，继续用临时 ID
           }
         }
       } catch (err) {
@@ -107,7 +119,6 @@ export default function ChatPage() {
       setMessages(data || [])
     } catch (err) {
       console.warn('[Chat] 加载消息失败（非致命）:', err)
-      // 不弹 toast 避免打扰，降级为空消息列表
     }
   }
 
@@ -116,12 +127,117 @@ export default function ChatPage() {
     loadMessages(convId)
   }
 
-  /** 核心发送逻辑：无论认证状态如何，保证"显示 + 调 AI"两条都走通 */
+  /** ===== 重新生成 AI 回复 ===== */
+  const handleRegenerate = async (messageId: string) => {
+    const currentCount = regenerateCounts[messageId] || 0
+    if (currentCount >= MAX_REGENERATE_COUNT) {
+      toast.error(`该消息已达到最大重试次数(${MAX_REGENERATE_COUNT}次)`)
+      return
+    }
+
+    // 找到该消息前一条用户消息作为上下文
+    const msgIndex = messages.findIndex(m => m.id === messageId)
+    if (msgIndex === -1) return
+
+    // 找最近的一条用户消息
+    let lastUserMessage = ''
+    for (let i = msgIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessage = messages[i].content
+        break
+      }
+    }
+
+    // 先把当前这条替换为加载动画
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, content: '...', message_type: 'text' as const } : m
+    ))
+    setLoading(true)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: lastUserMessage || '(请根据上下文重新回复)',
+          conversation_id: conversationId || undefined,
+          user_id: userId || undefined,
+        })
+      })
+
+      const data = await response.json()
+
+      // 替换为新的回复内容
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, content: data.reply || data.error || '抱歉，暂时无法回复。', created_at: new Date().toISOString() }
+          : m
+      ))
+
+      // 增加重试计数
+      setRegenerateCounts(prev => ({ ...prev, [messageId]: currentCount + 1 }))
+
+      if (data.error) toast.error(data.error)
+    } catch (err) {
+      toast.error('重新生成失败，请重试')
+      // 恢复原始内容
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? m : m
+      ))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /** ===== 反馈（喜欢/不喜欢） ===== */
+  const handleFeedback = async (messageId: string, type: 'like' | 'dislike') => {
+    // 将反馈写入偏好记忆（如果有 userId）
+    if (!userId) {
+      toast.error('登录后反馈才会被记住')
+      return
+    }
+
+    const msg = messages.find(m => m.id === messageId)
+    if (!msg) return
+
+    try {
+      // 调用 memory API 写入一条偏好记忆
+      const feedbackText = type === 'like'
+        ? `用户喜欢以下类型的回复风格："${msg.content.slice(0, 50)}..."`
+        : `用户不喜欢以下类型的回复："${msg.content.slice(0, 50)}..."`
+
+      await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          content: feedbackText,
+          memory_type: 'preference',
+          importance: type === 'like' ? 7 : 6,
+          tags: [type === 'like' ? '正向反馈' : '负向反馈']
+        })
+      })
+
+      toast.success(type === 'like' ? '已记录你的偏好 ✨' : '已记录，会改进 🙏')
+
+      // 在消息上标记反馈状态
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, metadata: { ...m.metadata, feedback: type } }
+          : m
+      ))
+    } catch {
+      toast.error('反馈保存失败')
+    }
+  }
+
+  /** 核心发送逻辑 */
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
 
     const sendTime = new Date().toISOString()
-    // ===== ① 立即显示用户消息（乐观更新，100% 可靠）=====
+
+    // ===== ① 立即显示用户消息 =====
     const userMessage: Message = {
       id: tempId(),
       conversation_id: conversationId || tempId(),
@@ -145,9 +261,7 @@ export default function ChatPage() {
         })
       })
 
-      if (!response.ok) {
-        throw new Error(`API ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`API ${response.status}`)
 
       const data = await response.json()
 
@@ -163,11 +277,9 @@ export default function ChatPage() {
       setMessages(prev => [...prev, aiMessage])
       setMemoriesUsed(data.meta?.memories_used || 0)
 
-      if (data.error) {
-        toast.error(data.error)
-      }
+      if (data.error) toast.error(data.error)
 
-      // ===== ④ 异步持久化到 DB（仅在有完整认证时，静默失败不提示）=====
+      // ===== ④ 异步持久化到 DB =====
       if (userId && conversationId) {
         try {
           await supabase.from('messages').insert({
@@ -195,9 +307,6 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error('[Chat] 发送失败:', err)
-      const errMsg = err instanceof Error ? err.message : String(err)
-
-      // 网络/API 完全不可用时也给一个反馈
       const fallbackMsg: Message = {
         id: tempId(),
         conversation_id: conversationId || tempId(),
@@ -215,37 +324,57 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen tech-bg tech-grid relative">
-      {/* 顶部导航 */}
-      <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10">
-        <button
-          onClick={() => setShowConvList(true)}
-          className="text-dark-gray"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
-            <span className="text-white text-sm font-semibold">AI</span>
-          </div>
-          <div>
-            <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
-            <div className="flex items-center space-x-1">
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
-              <p className="text-xs text-medium-gray">
-                {authReady ? '在线' : '连接中...'}
-              </p>
-              {memoriesUsed > 0 && (
-                <span className="text-xs text-deep-orange ml-1">
-                  · 记忆 {memoriesUsed}
-                </span>
-              )}
+      {/* 顶部导航 —— 根据 headerMode 显示或隐藏 */}
+      {headerMode === 'full' && (
+        <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10 fade-in">
+          <button
+            onClick={() => setShowConvList(true)}
+            className="text-dark-gray"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
+              <span className="text-white text-sm font-semibold">AI</span>
+            </div>
+            <div>
+              <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
+              <div className="flex items-center space-x-1">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
+                <p className="text-xs text-medium-gray">
+                  {authReady ? '在线' : '连接中...'}
+                </p>
+                {memoriesUsed > 0 && (
+                  <span className="text-xs text-deep-orange ml-1">· 记忆 {memoriesUsed}</span>
+                )}
+              </div>
             </div>
           </div>
+          <button
+            onClick={() => setHeaderMode('minimal')}
+            className="text-medium-gray hover:text-dark-gray"
+            title="收起"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
-        <div className="w-6" />
-      </div>
+      )}
+
+      {/* minimal 模式下只显示一个展开按钮 */}
+      {headerMode === 'minimal' && (
+        <div className="safe-top pt-2 px-4 flex justify-center">
+          <button
+            onClick={() => setHeaderMode('full')}
+            className="glass-subtle rounded-full px-4 py-1.5 text-xs text-medium-gray fade-in"
+          >
+            ▼ 展开功能区
+          </button>
+        </div>
+      )}
 
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-5 relative">
@@ -263,7 +392,18 @@ export default function ChatPage() {
         {messages.map((msg, i) => {
           const prev = messages[i - 1]
           const grouped = prev && prev.role === msg.role
-          return <ChatBubble key={msg.id} message={msg} grouped={grouped} />
+          return (
+            <ChatBubble
+              key={msg.id}
+              message={msg}
+              grouped={grouped}
+              onRegenerate={msg.role === 'assistant' ? () => handleRegenerate(msg.id) : undefined}
+              regenerateCount={regenerateCounts[msg.id] || 0}
+              maxRegenerateCount={MAX_REGENERATE_COUNT}
+              onFeedback={msg.role === 'assistant' ? (type) => handleFeedback(msg.id, type) : undefined}
+              currentFeedback={(msg.metadata?.feedback as string) || null}
+            />
+          )
         })}
         {loading && (
           <div className="flex justify-start">

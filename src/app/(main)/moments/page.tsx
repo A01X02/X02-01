@@ -16,72 +16,86 @@ export default function MomentsPage() {
   }, [])
 
   const loadMoments = async () => {
+    setLoading(true)
     try {
-      // 先加载动态（不关联 profiles，因为 moments.user_id → auth.users 非 profiles）
+      // Step 1: 查动态（不关联 profiles，避免 PostgREST FK 解析失败）
       const { data: rawData, error: momError } = await supabase
         .from('moments')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50)
 
-      if (momError) throw momError
+      // 即使查询出错也优雅降级，不再弹 toast
+      if (momError) {
+        console.warn('[Moments] 动态查询返回错误（降级为空列表）:', momError.message)
+        setMoments([])
+        setLoading(false)
+        return
+      }
 
-      // 如果没有数据，直接设空（不再报错）
+      // 无数据 → 正常空状态
       if (!rawData || rawData.length === 0) {
         setMoments([])
         setLoading(false)
         return
       }
 
-      // 收集所有非空的 user_id，批量查 profiles
+      // Step 2: 批量查 profiles（独立查询，失败不影响主流程）
       const userIds = [...new Set(rawData.map(m => m.user_id).filter(Boolean))] as string[]
 
       let profileMap: Record<string, Profile> = {}
       if (userIds.length > 0) {
         try {
-          const { data: profiles } = await supabase
+          const { data: profiles, error: profError } = await supabase
             .from('profiles')
             .select('*')
-            .in('user_id', userIds)
+            .in('id', userIds)
 
-          if (profiles) {
-            profileMap = Object.fromEntries(profiles.map(p => [p.user_id, p]))
+          // 注意：profiles 的主键是 id（= auth.users.id），不是 user_id
+          if (profiles && !profError) {
+            profileMap = Object.fromEntries(profiles.map(p => [p.id, p]))
           }
-        } catch {
-          // profiles 查询失败不影响主流程
-          console.warn('[Moments] 批量查询 profiles 失败，动态将显示默认名称')
+        } catch (e) {
+          console.warn('[Moments] profiles 查询失败，使用默认名称')
         }
       }
 
-      // 组装完整数据
-      const assembled: Moment[] = rawData.map(m => ({
-        ...m,
-        user: m.user_id ? profileMap[m.user_id] || undefined : undefined,
-      }))
+      // Step 3: 组装数据
+      const assembled: Moment[] = rawData.map(m => {
+        // user_id 是 auth.users.id，用它在 profileMap 中查找
+        const profile = m.user_id ? profileMap[m.user_id] : undefined
+        return {
+          ...m,
+          user: profile,
+        }
+      })
 
-      // 检查当前用户是否点赞（仅当用户已登录时）
+      // Step 4: 检查当前用户点赞状态（静默失败）
       let finalMoments = assembled
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (user && assembled.length > 0) {
           const momentIds = assembled.map(m => m.id)
-          const { data: likesData } = await supabase
+          const { data: likesData, error: likeErr } = await supabase
             .from('likes')
             .select('moment_id')
             .eq('user_id', user.id)
             .in('moment_id', momentIds)
 
-          const likedIds = new Set((likesData || []).map(l => l.moment_id))
-          finalMoments = assembled.map(m => ({ ...m, is_liked: likedIds.has(m.id) }))
+          if (!likeErr && likesData) {
+            const likedIds = new Set(likesData.map(l => l.moment_id))
+            finalMoments = assembled.map(m => ({ ...m, is_liked: likedIds.has(m.id) }))
+          }
         }
       } catch {
-        // 点赞状态查不到不影响显示
+        // 点赞状态查不到完全忽略
       }
 
       setMoments(finalMoments)
     } catch (err) {
-      console.error('[Moments] 加载失败:', err)
-      toast.error('加载朋友圈失败')
+      // 最外层兜底：任何未预期异常都只打日志，不弹 toast
+      console.error('[Moments] 加载异常:', err)
+      setMoments([]) // 降级为空
     } finally {
       setLoading(false)
     }
@@ -102,11 +116,19 @@ export default function MomentsPage() {
       <CreateMomentButton onSuccess={handleMomentCreated} />
 
       {/* 动态列表 */}
-      <div className="px-4 py-4 space-y-4">
+      <div className="px-4 py-4 space-y-4 pb-24">
         {loading ? (
           <div className="text-center py-8 text-medium-gray">加载中...</div>
         ) : moments.length === 0 ? (
-          <div className="text-center py-8 text-medium-gray">还没有动态，快来发布第一条吧！</div>
+          <div className="text-center py-8 space-y-2">
+            <div className="w-16 h-16 mx-auto bg-light-orange/50 rounded-full flex items-center justify-center mb-3">
+              <svg className="w-8 h-8 text-deep-orange/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </div>
+            <p className="text-medium-gray text-sm">还没有动态</p>
+            <p className="text-xs text-medium-gray/70">AI 会自动分享生活碎片，或点击 + 发布一条</p>
+          </div>
         ) : (
           moments.map((moment) => (
             <MomentCard
