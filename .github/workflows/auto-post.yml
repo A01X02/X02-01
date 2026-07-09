@@ -1,0 +1,76 @@
+# AI 自动发圈定时任务
+# 每天 2 次：上午 9:00 + 晚上 20:00（北京时间）
+# 通过 GitHub Actions 调用豆包生成文案 + Unsplash/Picsum 配图 → 写入 Supabase
+#
+# 使用前需配置 Repository Secrets：
+#   DOUBAO_API_KEY        - 豆包(火山方舟) API Key
+#   DOUBAO_API_ENDPOINT   - 豆包 API 地址（默认 https://ark.cn-beijing.volces.com/api/v3）
+#   SUPABASE_URL          - Supabase 项目 URL
+#   SUPABASE_SERVICE_KEY  - Supabase service_role key（有写入权限）
+#   UNSPLASH_ACCESS_KEY   - （可选）Unsplash API Key，不填则用 Picsum 备选
+#
+# 配置路径：Settings → Secrets and variables → Actions → New repository secret
+
+name: AI Auto Post Moments
+
+on:
+  schedule:
+    # 上午 9:00 北京时间 (UTC+8) = 01:00 UTC
+    - cron: '0 1 * * *'
+    # 晚上 20:00 北京时间 (UTC+8) = 12:00 UTC
+    - cron: '0 12 * * *'
+  # 支持手动触发（测试用）
+  workflow_dispatch:
+    inputs:
+      slot:
+        description '时间段: morning 或 evening'
+        required: false
+        default: 'morning'
+
+jobs:
+  auto-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts || npm install
+
+      - name: Determine time slot
+        id: slot
+        run: |
+          if [ "${{ github.event.inputs.slot }}" != "" ]; then
+            echo "value=${{ github.event.inputs.slot }}" >> $GITHUB_OUTPUT
+          else
+            # 根据 cron 时间判断：UTC 01:00=早晨, UTC 12:00=晚间
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" -lt 6 ]; then
+              echo "value=morning" >> $GITHUB_OUTPUT
+            else
+              echo "value=evening" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Run auto-post script
+        env:
+          DOUBAO_API_KEY: ${{ secrets.DOUBAO_API_KEY }}
+          DOUBAO_API_ENDPOINT: ${{ secrets.DOUBAO_API_ENDPOINT }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          SLOT: ${{ steps.slot.outputs.value }}
+          MODEL_ID: 'ep-20260709001000-997r8'
+        run: node .github/scripts/auto-post.js
+
+      - name: Show result
+        if: always()
+        run: echo "AUTO_POST_RESULT=$(cat /tmp/auto-post-result.json 2>/dev/null || echo '{}')"

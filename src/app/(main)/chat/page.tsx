@@ -31,11 +31,19 @@ export default function ChatPage() {
 
   const loadUserAndConversation = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      let { data: { user } } = await supabase.auth.getUser()
+
+      // 未登录 → 自动匿名登录，确保聊天功能可用
       if (!user) {
-        // 未登录：直接显示空聊天界面，不阻塞页面
-        return
+        const { data: authData, error: anonError } = await supabase.auth.signInAnonymously()
+        if (anonError || !authData?.user) {
+          console.error('匿名登录失败:', anonError?.message)
+          // 匿名登录也失败时仍允许使用（降级模式）
+          return
+        }
+        user = authData.user
       }
+
       setUserId(user.id)
 
       const { data: conversations, error: convError } = await supabase
@@ -94,14 +102,12 @@ export default function ChatPage() {
   }
 
   const sendMessage = async (content: string) => {
-    if (!conversationId || !content.trim() || !userId) return
+    if (!content.trim()) return
 
-    setLoading(true)
-    setMemoriesUsed(0)
-
+    // 优化体验：即使没有完整会话状态，也先让用户看到自己的消息
     const userMessage: Message = {
       id: Date.now().toString(),
-      conversation_id: conversationId,
+      conversation_id: conversationId || 'pending',
       role: 'user',
       content,
       message_type: 'text',
@@ -109,12 +115,53 @@ export default function ChatPage() {
     }
     setMessages(prev => [...prev, userMessage])
 
+    // 如果没有会话或用户ID，仍尝试调用AI（降级模式）
+    if (!conversationId || !userId) {
+      setLoading(true)
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: content,
+            conversation_id: conversationId || undefined,
+            user_id: userId || undefined
+          })
+        })
+
+        const data = await response.json()
+
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          conversation_id: conversationId || 'pending',
+          role: 'assistant',
+          content: data.reply || data.error || '抱歉，暂时无法回复。',
+          message_type: 'text',
+          created_at: new Date().toISOString()
+        }
+        setMessages(prev => [...prev, aiMessage])
+        if (data.error) {
+          toast.error(data.error)
+        }
+      } catch (error) {
+        toast.error('网络连接失败，请检查网络')
+        console.error('发送失败:', error)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // 正常模式（有完整的会话和用户状态）
+    setLoading(true)
+    setMemoriesUsed(0)
+
     await supabase.from('messages').insert({
       conversation_id: conversationId,
       role: 'user',
       content,
       message_type: 'text'
-    })
+    }).catch(err => console.warn('写入用户消息到DB失败(非致命):', err.message))
 
     try {
       const response = await fetch('/api/chat', {

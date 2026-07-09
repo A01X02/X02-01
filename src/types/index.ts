@@ -37,7 +37,8 @@ export interface Message {
 // 朋友圈动态类型
 export interface Moment {
   id: string
-  user_id: string
+  user_id?: string | null
+  ai_display_name?: string    // AI帖子的显示名称（user_id为null时使用）
   content?: string
   image_urls?: string[]
   video_url?: string

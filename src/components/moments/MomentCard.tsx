@@ -118,18 +118,28 @@ export default function MomentCard({ moment, onUpdate }: MomentCardProps) {
     <div className="glass rounded-2xl p-5 fade-in">
       {/* 用户信息 */}
       <div className="flex items-center space-x-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-primary-orange flex items-center justify-center overflow-hidden">
-          {moment.user?.avatar_url ? (
-            <img src={moment.user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-white font-semibold text-sm">
-              {(moment.user?.display_name || moment.user?.username || 'U').charAt(0).toUpperCase()}
-            </span>
-          )}
-        </div>
+        {moment.is_ai_generated ? (
+          /* AI 头像：蓝金渐变 */
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-sm">
+            <span className="text-white font-semibold text-xs">AI</span>
+          </div>
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-primary-orange flex items-center justify-center overflow-hidden">
+            {moment.user?.avatar_url ? (
+              <img src={moment.user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-white font-semibold text-sm">
+                {(moment.user?.display_name || moment.user?.username || 'U').charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+        )}
         <div>
           <p className="font-medium text-dark-gray text-sm">
-            {moment.user?.display_name || moment.user?.username || '匿名用户'}
+            {moment.is_ai_generated
+              ? (moment.ai_display_name || 'AI 智能助手')
+              : (moment.user?.display_name || moment.user?.username || '匿名用户')
+            }
             {moment.is_ai_generated && (
               <span className="ml-2 text-xs bg-light-orange text-deep-orange px-2 py-0.5 rounded-full">AI</span>
             )}

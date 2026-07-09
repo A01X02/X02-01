@@ -25,18 +25,27 @@ export async function POST(request: NextRequest) {
     let reply = ''
     let memoriesUsed: number = 0
 
-    // ===== 步骤1: 检索相关记忆 =====
+    // ===== 步骤1: 检索相关记忆（容错：缺表/RPC时不阻塞） =====
     let memoryContext = ''
     if (user_id) {
-      const memories = await retrieveMemories(user_id, message, 8)
-      memoriesUsed = memories.length
-      memoryContext = buildMemoryContext(memories)
+      try {
+        const memories = await retrieveMemories(user_id, message, 8)
+        memoriesUsed = memories.length
+        memoryContext = buildMemoryContext(memories)
+      } catch (err) {
+        // RPC函数或memories表不存在时降级为无记忆模式
+        console.warn('记忆检索降级(非致命):', err instanceof Error ? err.message : err)
+      }
     }
 
-    // ===== 步骤2: 获取对话历史 =====
+    // ===== 步骤2: 获取对话历史（容错：缺表时不阻塞） =====
     let history: { role: string; content: string }[] = []
     if (conversation_id) {
-      history = await getConversationHistory(conversation_id, 20)
+      try {
+        history = await getConversationHistory(conversation_id, 20)
+      } catch (err) {
+        console.warn('对话历史获取降级(非致命):', err instanceof Error ? err.message : err)
+      }
     }
 
     // ===== 步骤3: 构建完整上下文 =====
@@ -91,56 +100,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ===== 步骤5: 异步触发记忆提取 =====
+    // ===== 步骤5: 异步触发记忆提取（容错：缺表时不阻塞响应） =====
     if (user_id && conversation_id) {
-      // 获取当前对话消息数
-      const { count } = await supabaseAdmin
-        .from('messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('conversation_id', conversation_id)
-
-      const messageCount = count || 0
-
-      // 每 N 轮触发记忆提取
-      if (messageCount > 0 && messageCount % MEMORY_EXTRACTION_INTERVAL === 0) {
-        // 获取最近的对话用于提取
-        const { data: recentMessages } = await supabaseAdmin
+      try {
+        // 获取当前对话消息数
+        const { count } = await supabaseAdmin
           .from('messages')
-          .select('role, content')
+          .select('*', { count: 'exact', head: true })
           .eq('conversation_id', conversation_id)
-          .order('created_at', { ascending: false })
-          .limit(MEMORY_EXTRACTION_INTERVAL)
 
-        if (recentMessages && recentMessages.length > 0) {
-          const allMessages = [
-            ...recentMessages.reverse().map((m: any) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: message },
-            { role: 'assistant', content: reply }
-          ]
+        const messageCount = count || 0
 
-          // 异步提取记忆（不阻塞响应）
-          extractMemoriesFromConversation(user_id, conversation_id, allMessages)
-            .then(memories => saveMemories(user_id, conversation_id, memories))
-            .catch(err => console.error('记忆提取异步任务失败:', err))
+        // 每 N 轮触发记忆提取
+        if (messageCount > 0 && messageCount % MEMORY_EXTRACTION_INTERVAL === 0) {
+          try {
+            const { data: recentMessages } = await supabaseAdmin
+              .from('messages')
+              .select('role, content')
+              .eq('conversation_id', conversation_id)
+              .order('created_at', { ascending: false })
+              .limit(MEMORY_EXTRACTION_INTERVAL)
+
+            if (recentMessages && recentMessages.length > 0) {
+              const allMessages = [
+                ...recentMessages.reverse().map((m: any) => ({ role: m.role, content: m.content })),
+                { role: 'user', content: message },
+                { role: 'assistant', content: reply }
+              ]
+
+              extractMemoriesFromConversation(user_id, conversation_id, allMessages)
+                .then(memories => saveMemories(user_id, conversation_id, memories))
+                .catch(err => console.error('记忆提取异步任务失败:', err))
+            }
+          } catch (err) {
+            console.warn('记忆提取跳过(缺表):', err instanceof Error ? err.message : err)
+          }
         }
-      }
 
-      // 超过阈值触发摘要生成
-      if (messageCount >= SUMMARY_THRESHOLD && messageCount % SUMMARY_THRESHOLD === 0) {
-        const { data: allMessages } = await supabaseAdmin
-          .from('messages')
-          .select('role, content')
-          .eq('conversation_id', conversation_id)
-          .order('created_at', { ascending: true })
-          .limit(SUMMARY_THRESHOLD)
+        // 超过阈值触发摘要生成
+        if (messageCount >= SUMMARY_THRESHOLD && messageCount % SUMMARY_THRESHOLD === 0) {
+          try {
+            const { data: allMessages } = await supabaseAdmin
+              .from('messages')
+              .select('role, content')
+              .eq('conversation_id', conversation_id)
+              .order('created_at', { ascending: true })
+              .limit(SUMMARY_THRESHOLD)
 
-        if (allMessages && allMessages.length > 0) {
-          generateConversationSummary(
-            user_id, 
-            conversation_id, 
-            allMessages.map((m: any) => ({ role: m.role, content: m.content }))
-          ).catch(err => console.error('摘要生成失败:', err))
+            if (allMessages && allMessages.length > 0) {
+              generateConversationSummary(
+                user_id,
+                conversation_id,
+                allMessages.map((m: any) => ({ role: m.role, content: m.content }))
+              ).catch(err => console.error('摘要生成失败:', err))
+            }
+          } catch (err) {
+            console.warn('摘要生成跳过(缺表):', err instanceof Error ? err.message : err)
+          }
         }
+      } catch (err) {
+        console.warn('异步记忆处理跳过(缺表):', err instanceof Error ? err.message : err)
       }
     }
 
