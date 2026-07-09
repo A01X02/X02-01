@@ -9,7 +9,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 // —— 火山引擎语音合成配置（从环境变量读取，未配置则优雅降级）——
 const VOLC_TTS_APPID = process.env.VOLC_TTS_APPID
-const VOLC_TTS_ACCESS_TOKEN = process.env.VOLC_TTS_ACCESS_TOKEN
+// API Key（从 火山引擎控制台 → 豆包语音 → API Key管理 获取）
+const VOLC_TTS_API_KEY = process.env.VOLC_TTS_ACCESS_TOKEN
 // 声音复刻 2.0 用 volcano_icl；1.0 用 volcano_mega
 const VOLC_TTS_CLUSTER = process.env.VOLC_TTS_CLUSTER || 'volcano_icl'
 // 你复刻出来的音色 ID（形如 S_xxxxxxx），作为 bot 默认嗓音
@@ -22,12 +23,13 @@ async function synthesizeWithVolc(
   speakerId: string
 ): Promise<{ audioUrl: string | null; message: string }> {
   const reqid =
-    globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
+  // 请求体格式严格参照火山官方「声音复刻2.0」示例
+  // 鉴权通过 X-Api-Key 请求头传递，不在 body 中重复放 token
   const body = {
     app: {
-      appid: VOLC_TTS_APPID,
-      token: VOLC_TTS_ACCESS_TOKEN,
+      ...(VOLC_TTS_APPID ? { appid: VOLC_TTS_APPID } : {}),
       cluster: VOLC_TTS_CLUSTER,
     },
     user: { uid: 'ai-companion' },
@@ -35,25 +37,24 @@ async function synthesizeWithVolc(
       voice_type: speakerId,
       encoding: 'mp3',
       speed_ratio: 1.0,
-      volume_ratio: 1.0,
-      pitch_ratio: 1.0,
     },
     request: {
       reqid,
       // 朗读文本限长，避免超长费时；过长仅读前 300 字
       text: text.slice(0, 300),
-      text_type: 'plain',
       operation: 'query',
     },
   }
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    // 火山声音复刻 2.0 标准鉴权：X-Api-Key 头（非 Authorization Bearer）
+    'X-Api-Key': VOLC_TTS_API_KEY!,
+  }
+
   const resp = await fetch(VOLC_TTS_ENDPOINT, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // 注意：火山鉴权格式是 "Bearer;{token}"（分号，不是空格）
-      Authorization: `Bearer;${VOLC_TTS_ACCESS_TOKEN}`,
-    },
+    headers,
     body: JSON.stringify(body),
   })
 
@@ -81,12 +82,12 @@ export async function POST(request: NextRequest) {
       const speaker = voice_id || VOLC_TTS_VOICE_ID
 
       // 未配置密钥 / 音色 → 优雅降级，前端据此静默跳过朗读
-      if (!VOLC_TTS_APPID || !VOLC_TTS_ACCESS_TOKEN || !speaker) {
+      if (!VOLC_TTS_API_KEY || !speaker) {
         return NextResponse.json({
           success: false,
           audio_url: null,
           message:
-            '语音未配置：请在环境变量填入 VOLC_TTS_APPID / VOLC_TTS_ACCESS_TOKEN / VOLC_TTS_VOICE_ID',
+            '语音未配置：请在环境变量填入 VOLC_TTS_ACCESS_TOKEN（API Key） / VOLC_TTS_VOICE_ID（复刻音色ID）',
         })
       }
 
