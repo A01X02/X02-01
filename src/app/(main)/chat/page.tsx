@@ -52,8 +52,55 @@ export default function ChatPage() {
   // 当前正在朗读的消息 ID
   const [speakingId, setSpeakingId] = useState<string | null>(null)
 
+  // 历史消息分页（仿豆包：初始加载最近，下拉加载更早）
+  const [hasMoreHistory, setHasMoreHistory] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const PAGE_SIZE = 30
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // 下拉加载历史时跳过一次"自动滚到底部"，避免视图跳动
+  const skipAutoScrollRef = useRef(false)
+  // 复用同一个 audio 元素（移动端一旦在手势内播放过一次，之后可编程播放）
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioUnlockedRef = useRef(false)
+
+  /** 获取（惰性创建）持久化音频元素 */
+  const getAudioEl = useCallback(() => {
+    if (typeof window === 'undefined') return null
+    if (!audioRef.current) {
+      const el = new Audio()
+      el.onended = () => setSpeakingId(null)
+      el.onerror = () => setSpeakingId(null)
+      audioRef.current = el
+    }
+    return audioRef.current
+  }, [])
+
+  /** 在用户手势内解锁音频（静音播放一小段静音音频），突破移动端自动播放限制 */
+  const unlockAudio = useCallback(() => {
+    if (audioUnlockedRef.current) return
+    const el = getAudioEl()
+    if (!el) return
+    try {
+      el.muted = true
+      // 44 字节静音 WAV
+      el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+      const p = el.play()
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          el.pause()
+          el.currentTime = 0
+          el.muted = false
+          audioUnlockedRef.current = true
+        }).catch(() => { el.muted = false })
+      } else {
+        el.muted = false
+      }
+    } catch {
+      el.muted = false
+    }
+  }, [getAudioEl])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -75,7 +122,13 @@ export default function ChatPage() {
     }
   }, [headerMode])
 
-  useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
+  useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false
+      return
+    }
+    scrollToBottom()
+  }, [messages, scrollToBottom])
 
   // 消息变化时备份到 sessionStorage（切页不丢）
   useEffect(() => {
@@ -158,20 +211,79 @@ export default function ChatPage() {
     return () => { cancelled = true }
   }, [])
 
+  /** 初始加载：只取最近 PAGE_SIZE 条（倒序取再反转为正序），并标记是否还有更早历史 */
   const loadMessages = async (convId: string) => {
     try {
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', convId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE)
 
       if (error) throw error
-      setMessages(data || [])
+      const recent = (data || []).slice().reverse()
+      setMessages(recent)
+      setHasMoreHistory((data || []).length >= PAGE_SIZE)
+      // 初始加载后滚到底部
+      setTimeout(scrollToBottom, 50)
     } catch (err) {
       console.warn('[Chat] 加载消息失败（非致命）:', err)
     }
   }
+
+  /** 下拉加载更早的历史消息（保持当前滚动位置，避免跳动） */
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingMore || !hasMoreHistory) return
+    const convId = conversationId
+    if (!convId || convId.startsWith('temp-')) return
+    if (messages.length === 0) return
+
+    setLoadingMore(true)
+    const container = scrollContainerRef.current
+    const prevHeight = container?.scrollHeight || 0
+    try {
+      const oldest = messages[0]
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', convId)
+        .lt('created_at', oldest.created_at)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE)
+
+      if (error) throw error
+      const older = (data || []).slice().reverse()
+      if (older.length > 0) {
+        skipAutoScrollRef.current = true
+        setMessages(prev => [...older, ...prev])
+        // 还原滚动位置（新增内容在顶部，补偿高度差）
+        requestAnimationFrame(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - prevHeight
+          }
+        })
+      }
+      setHasMoreHistory((data || []).length >= PAGE_SIZE)
+    } catch (err) {
+      console.warn('[Chat] 加载历史失败:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, hasMoreHistory, conversationId, messages])
+
+  // 滚动到顶部附近时，自动加载更早的历史消息（仿豆包下拉加载）
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const onScroll = () => {
+      if (container.scrollTop <= 40 && hasMoreHistory && !loadingMore) {
+        loadOlderMessages()
+      }
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+  }, [hasMoreHistory, loadingMore, loadOlderMessages])
 
   const handleSelectConversation = (convId: string) => {
     setConversationId(convId)
@@ -287,15 +399,18 @@ export default function ChatPage() {
   const speak = useCallback(async (messageId: string, text: string) => {
     if (!text || !text.trim()) return
 
-    // 若正在播放，先停止（点击同一条=停止）
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current = null
-    }
+    const el = getAudioEl()
+    if (!el) return
+
+    // 若点击的是正在播放的同一条 = 停止
     if (speakingId === messageId) {
+      el.pause()
       setSpeakingId(null)
       return
     }
+
+    // 播放新的一条前，先停掉当前
+    el.pause()
 
     setSpeakingId(messageId)
     try {
@@ -319,19 +434,17 @@ export default function ChatPage() {
         return
       }
 
-      const audio = new Audio(data.audio_url)
-      audioRef.current = audio
-      audio.onended = () => { setSpeakingId(null); audioRef.current = null }
-      audio.onerror = () => { setSpeakingId(null); audioRef.current = null }
-      await audio.play().catch(() => {
-        // 浏览器可能拦截自动播放；此时保留按钮态，用户可手动点朗读
+      el.muted = false
+      el.src = data.audio_url
+      el.currentTime = 0
+      await el.play().catch(() => {
+        // 浏览器仍拦截（极少数情况）；保留手动朗读按钮兜底
         setSpeakingId(null)
-        audioRef.current = null
       })
     } catch {
       setSpeakingId(null)
     }
-  }, [speakingId])
+  }, [speakingId, getAudioEl])
 
   /** 是否开启「AI 回复后自动朗读」 */
   const isAutoPlayOn = () =>
@@ -340,6 +453,9 @@ export default function ChatPage() {
   /** 核心发送逻辑 */
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
+
+    // 在用户手势内解锁音频（供随后异步返回的 TTS 自动播放，绕过移动端拦截）
+    if (isAutoPlayOn()) unlockAudio()
 
     const sendTime = new Date().toISOString()
 
@@ -435,7 +551,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen tech-bg tech-grid relative">
+    <div className="flex flex-col h-full tech-bg tech-grid relative">
       {/* 顶部导航 —— 始终渲染，headerMode 只控制内部元素显隐 */}
       <div className="bg-white/80 safe-top border-b border-light-gray/60 px-4 py-3 flex items-center justify-between relative z-10 min-h-[52px] shrink-0 backdrop-blur-xl">
         {/* full 模式：显示汉堡菜单 + AI 信息 */}
@@ -490,7 +606,18 @@ export default function ChatPage() {
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 relative">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-5 relative">
+        {/* 下拉加载更早历史的提示 */}
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <span className="text-xs text-medium-gray">加载更早的聊天…</span>
+          </div>
+        )}
+        {!hasMoreHistory && messages.length >= PAGE_SIZE && (
+          <div className="flex justify-center py-2">
+            <span className="text-xs text-medium-gray/60">没有更早的消息了</span>
+          </div>
+        )}
         {messages.length === 0 && !loading && (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto bg-light-orange rounded-full flex items-center justify-center mb-3">

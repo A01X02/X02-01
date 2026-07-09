@@ -65,7 +65,7 @@ export default function MainLayout({
   }
 
   return (
-    <div className="max-w-md mx-auto h-screen flex flex-col bg-bg-gray shadow-2xl relative">
+    <div className="max-w-md mx-auto h-[100dvh] flex flex-col bg-bg-gray shadow-2xl relative">
       {/* 主内容区域 */}
       <div className="flex-1 overflow-hidden">
         {children}

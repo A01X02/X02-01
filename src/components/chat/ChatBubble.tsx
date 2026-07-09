@@ -60,12 +60,17 @@ export default function ChatBubble({
     }
   }
 
+  /** 关闭反馈面板（含淡出动画后彻底移除） */
+  const closeFeedback = () => {
+    setFeedbackVisible(false)
+    setTimeout(() => setShowFeedback(false), 200)
+  }
+
   useEffect(() => {
     if (!feedbackVisible) return
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (bubbleRef.current && !bubbleRef.current.contains(e.target as Node)) {
-        setFeedbackVisible(false)
-        setTimeout(() => setShowFeedback(false), 200)
+        closeFeedback()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -174,7 +179,7 @@ export default function ChatBubble({
               ].join(' ')}
             >
               <button
-                onClick={(e) => { e.stopPropagation(); onFeedback?.('like'); setFeedbackVisible(false); }}
+                onClick={(e) => { e.stopPropagation(); onFeedback?.('like'); closeFeedback(); }}
                 className={[
                   'w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-lg',
                   currentFeedback === 'like'
@@ -189,7 +194,7 @@ export default function ChatBubble({
               </button>
 
               <button
-                onClick={(e) => { e.stopPropagation(); onFeedback?.('dislike'); setFeedbackVisible(false); }}
+                onClick={(e) => { e.stopPropagation(); onFeedback?.('dislike'); closeFeedback(); }}
                 className={[
                   'w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-lg',
                   currentFeedback === 'dislike'
