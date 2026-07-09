@@ -11,11 +11,17 @@ interface ConversationListProps {
   onClose: () => void
 }
 
+/** 生成默认对话标题：新对话 M/D HH:mm */
+const defaultConvTitle = () => {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `新对话 ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export default function ConversationList({ currentConversationId, onSelect, onClose }: ConversationListProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
-  const [showNewInput, setShowNewInput] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
+  const [creating, setCreating] = useState(false)
   const [hasAuth, setHasAuth] = useState(false)
 
   useEffect(() => {
@@ -50,50 +56,53 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
     }
   }
 
+  /** 一键新建对话：无需先输标题，直接创建并切换过去 */
   const handleCreate = async () => {
-    if (!newTitle.trim()) return
+    if (creating) return
+    setCreating(true)
 
-    // 无认证时：生成临时会话 ID 并通知父组件（纯本地模式）
-    if (!hasAuth) {
-      const tempId = `temp-conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      const tempConv: Conversation = {
-        id: tempId,
-        user_id: '',
-        title: newTitle.trim() || '新对话',
-        is_archived: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-      setConversations([tempConv, ...conversations])
-      setNewTitle('')
-      setShowNewInput(false)
-      onSelect(tempConv.id)
-      onClose()
-      toast.success('已创建本地对话（登录后可同步到云端）')
-      return
-    }
+    const title = defaultConvTitle()
 
-    // 有认证：写入 Supabase
     try {
+      // 无认证时：生成临时会话 ID 并通知父组件（纯本地模式）
+      if (!hasAuth) {
+        const tempId = `temp-conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const tempConv: Conversation = {
+          id: tempId,
+          user_id: '',
+          title,
+          is_archived: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        setConversations([tempConv, ...conversations])
+        onSelect(tempConv.id)
+        onClose()
+        toast.success('已开启新对话（本地）')
+        return
+      }
+
+      // 有认证：写入 Supabase
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       const { data, error } = await supabase
         .from('conversations')
-        .insert({ user_id: user.id, title: newTitle.trim() })
+        .insert({ user_id: user.id, title })
         .select()
         .single()
 
       if (error) throw error
 
       setConversations([data!, ...conversations])
-      setNewTitle('')
-      setShowNewInput(false)
       onSelect(data!.id)
       onClose()
+      toast.success('已开启新对话')
     } catch (err) {
       console.error('[ConvList] 创建失败:', err)
-      toast.error('创建失败')
+      toast.error('创建失败，请重试')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -145,37 +154,18 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
           </button>
         </div>
 
-        {/* 新建对话 */}
+        {/* 新建对话（一键创建，免输标题） */}
         <div className="px-4 py-3 border-b border-light-gray">
-          {showNewInput ? (
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                placeholder="对话标题..."
-                autoFocus
-                className="flex-1 glass-subtle rounded-xl px-3 py-2 text-sm outline-none text-dark-gray placeholder-medium-gray"
-              />
-              <button
-                onClick={handleCreate}
-                className="text-primary-orange text-sm font-medium"
-              >
-                确定
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowNewInput(true)}
-              className="w-full flex items-center justify-center space-x-2 py-2 glass-subtle rounded-xl text-dark-gray text-sm hover:border-primary-orange/40 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span>新建对话{!hasAuth ? '（本地）' : ''}</span>
-            </button>
-          )}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="w-full flex items-center justify-center space-x-2 py-2 glass-subtle rounded-xl text-dark-gray text-sm hover:border-primary-orange/40 transition-colors disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>{creating ? '创建中...' : `新建对话${!hasAuth ? '（本地）' : ''}`}</span>
+          </button>
         </div>
 
         {/* 对话列表 */}

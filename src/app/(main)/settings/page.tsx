@@ -27,6 +27,9 @@ export default function SettingsPage() {
   // 当前主题
   const [currentTheme, setCurrentTheme] = useState<ThemeMode>('light')
 
+  // 语音自动朗读开关（本地镜像，未登录也可用）
+  const [voiceAutoPlay, setVoiceAutoPlay] = useState(false)
+
   useEffect(() => {
     loadSettings()
     // 从 localStorage 恢复主题
@@ -35,6 +38,8 @@ export default function SettingsPage() {
       setCurrentTheme(saved)
       applyTheme(saved)
     }
+    // 从 localStorage 恢复语音开关
+    setVoiceAutoPlay(localStorage.getItem('voice_auto_play') === '1')
     // 监听系统主题变化
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     mq.addEventListener('change', () => {
@@ -62,6 +67,11 @@ export default function SettingsPage() {
         if (data.theme) {
           setCurrentTheme(data.theme)
           applyTheme(data.theme)
+        }
+        // 以 DB 值为准同步语音开关到本地
+        if (typeof data.voice_auto_play === 'boolean') {
+          setVoiceAutoPlay(data.voice_auto_play)
+          localStorage.setItem('voice_auto_play', data.voice_auto_play ? '1' : '0')
         }
       }
 
@@ -99,12 +109,21 @@ export default function SettingsPage() {
   }
 
   const handleUpdate = async (updates: Partial<UserSettings>) => {
-    if (!user) return
+    // 语音开关同时镜像到 localStorage，聊天页可即时读取（即使未登录/降级模式也生效）
+    if ('voice_auto_play' in updates) {
+      localStorage.setItem('voice_auto_play', updates.voice_auto_play ? '1' : '0')
+    }
 
+    if (!user) {
+      // 未登录：仅本地生效（语音开关等）
+      toast.success('已保存')
+      return
+    }
+
+    // upsert：没有设置行时自动创建，避免 update 匹配 0 行导致静默失败
     const { error } = await supabase
       .from('user_settings')
-      .update(updates)
-      .eq('user_id', user.id)
+      .upsert({ user_id: user.id, ...updates }, { onConflict: 'user_id' })
 
     if (error) {
       toast.error('更新失败')
@@ -353,13 +372,16 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-dark-gray text-sm">语音自动播放</p>
-              <p className="text-xs text-medium-gray mt-0.5">收到语音消息时自动播放</p>
+              <p className="text-xs text-medium-gray mt-0.5">AI 回复后自动用复刻音色朗读</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={settings?.voice_auto_play || false}
-                onChange={(e) => handleUpdate({ voice_auto_play: e.target.checked })}
+                checked={voiceAutoPlay}
+                onChange={(e) => {
+                  setVoiceAutoPlay(e.target.checked)
+                  handleUpdate({ voice_auto_play: e.target.checked })
+                }}
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-light-gray peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-orange"></div>

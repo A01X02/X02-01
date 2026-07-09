@@ -45,18 +45,23 @@ export default function ChatPage() {
   // 记录每条消息的重新生成次数
   const [regenerateCounts, setRegenerateCounts] = useState<Record<string, number>>({})
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  // 当前正在朗读的消息 ID
+  const [speakingId, setSpeakingId] = useState<string | null>(null)
 
-  // 监听底部导航栏的切换事件
-  useEffect(() => {
-    return onChatToggle(() => {
-      setHeaderMode(prev => prev === 'full' ? 'minimal' : 'full')
-    })
-  }, [])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
+
+  // 监听底部导航栏「聊天」按钮：点击时始终展开功能区（避免卡在收起状态看不到功能区）
+  useEffect(() => {
+    return onChatToggle(() => {
+      setHeaderMode('full')
+      scrollToBottom()
+    })
+  }, [scrollToBottom])
 
   useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
 
@@ -241,6 +246,56 @@ export default function ChatPage() {
     }
   }
 
+  /** ===== 语音朗读（火山「声音复刻」TTS） ===== */
+  const speak = useCallback(async (messageId: string, text: string) => {
+    if (!text || !text.trim()) return
+
+    // 若正在播放，先停止（点击同一条=停止）
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    if (speakingId === messageId) {
+      setSpeakingId(null)
+      return
+    }
+
+    setSpeakingId(messageId)
+    try {
+      const resp = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'tts', text })
+      })
+      const data = await resp.json()
+
+      if (!data.audio_url) {
+        setSpeakingId(null)
+        // 仅在用户主动点击朗读时提示；自动播放时静默
+        if (data.message && !data.message.includes('未配置')) {
+          toast.error(data.message)
+        }
+        return
+      }
+
+      const audio = new Audio(data.audio_url)
+      audioRef.current = audio
+      audio.onended = () => { setSpeakingId(null); audioRef.current = null }
+      audio.onerror = () => { setSpeakingId(null); audioRef.current = null }
+      await audio.play().catch(() => {
+        // 浏览器可能拦截自动播放；此时保留按钮态，用户可手动点朗读
+        setSpeakingId(null)
+        audioRef.current = null
+      })
+    } catch {
+      setSpeakingId(null)
+    }
+  }, [speakingId])
+
+  /** 是否开启「AI 回复后自动朗读」 */
+  const isAutoPlayOn = () =>
+    typeof window !== 'undefined' && localStorage.getItem('voice_auto_play') === '1'
+
   /** 核心发送逻辑 */
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
@@ -289,6 +344,11 @@ export default function ChatPage() {
       setMemoriesUsed(data.meta?.memories_used || 0)
 
       if (data.error) toast.error(data.error)
+
+      // ===== 自动朗读（若开关已开且有真实回复） =====
+      if (isAutoPlayOn() && data.reply) {
+        speak(aiMessage.id, aiMessage.content)
+      }
 
       // ===== ④ 异步持久化到 DB =====
       if (userId && conversationId) {
@@ -413,6 +473,8 @@ export default function ChatPage() {
               maxRegenerateCount={MAX_REGENERATE_COUNT}
               onFeedback={msg.role === 'assistant' ? (type) => handleFeedback(msg.id, type) : undefined}
               currentFeedback={(msg.metadata?.feedback as string) || null}
+              onSpeak={msg.role === 'assistant' ? () => speak(msg.id, msg.content) : undefined}
+              speaking={speakingId === msg.id}
             />
           )
         })}

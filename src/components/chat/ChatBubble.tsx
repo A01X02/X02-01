@@ -11,6 +11,8 @@ interface ChatBubbleProps {
   maxRegenerateCount?: number
   onFeedback?: (type: 'like' | 'dislike') => void
   currentFeedback?: string | null
+  onSpeak?: () => void
+  speaking?: boolean
 }
 
 export default function ChatBubble({
@@ -21,6 +23,8 @@ export default function ChatBubble({
   maxRegenerateCount = 10,
   onFeedback,
   currentFeedback,
+  onSpeak,
+  speaking = false,
 }: ChatBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
@@ -122,20 +126,45 @@ export default function ChatBubble({
         {/* ====== AI 消息操作栏 ====== */}
         {isAssistant && (
           <>
-            {/* 重新生成按钮 */}
-            {onRegenerate && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onRegenerate() }}
-                disabled={regenerateCount >= maxRegenerateCount}
-                className="absolute -bottom-5 right-1 flex items-center gap-1 text-[10px] text-medium-gray hover:text-accent-blue transition-colors disabled:opacity-30"
-                title={regenTitle}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>{remainCount}</span>
-              </button>
-            )}
+            {/* 底部操作按钮：朗读 + 重新生成 */}
+            <div className="absolute -bottom-5 right-1 flex items-center gap-3">
+              {/* 朗读按钮 */}
+              {onSpeak && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSpeak() }}
+                  className={[
+                    'flex items-center gap-1 text-[10px] transition-colors',
+                    speaking ? 'text-accent-blue' : 'text-medium-gray hover:text-accent-blue',
+                  ].join(' ')}
+                  title={speaking ? '朗读中…' : '朗读'}
+                >
+                  {speaking ? (
+                    <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4.03v8.06A4.5 4.5 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5 9v6h4l5 5V4L9 9H5z" />
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {/* 重新生成按钮 */}
+              {onRegenerate && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRegenerate() }}
+                  disabled={regenerateCount >= maxRegenerateCount}
+                  className="flex items-center gap-1 text-[10px] text-medium-gray hover:text-accent-blue transition-colors disabled:opacity-30"
+                  title={regenTitle}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>{remainCount}</span>
+                </button>
+              )}
+            </div>
 
             {/* 长按反馈面板 */}
             <div
