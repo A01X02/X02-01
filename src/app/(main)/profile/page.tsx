@@ -14,6 +14,14 @@ export default function ProfilePage() {
   const [selectedVoice, setSelectedVoice] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // 从 localStorage 读昵称（设置页写入的），作为未登录或 DB 无数据时的兜底
+  const localDisplayName = typeof window !== 'undefined'
+    ? localStorage.getItem('user_display_name') || undefined
+    : undefined
+  const localAiName = typeof window !== 'undefined'
+    ? localStorage.getItem('ai_display_name') || undefined
+    : undefined
+
   useEffect(() => {
     loadProfile()
     loadThemes()
@@ -98,13 +106,13 @@ export default function ProfilePage() {
               <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
             ) : (
               <span className="text-white text-2xl font-semibold">
-                {(profile?.display_name || 'U').charAt(0).toUpperCase()}
+                {(profile?.display_name || localDisplayName || 'U').charAt(0).toUpperCase()}
               </span>
             )}
           </div>
           <div>
             <h2 className="text-lg font-semibold text-dark-gray">
-              {profile?.display_name || '未设置昵称'}
+              {profile?.display_name || localDisplayName || '未设置昵称'}
             </h2>
             <p className="text-sm text-medium-gray">{profile?.bio || '这个人很懒，什么都没写'}</p>
           </div>

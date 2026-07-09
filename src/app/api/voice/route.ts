@@ -66,7 +66,7 @@ async function synthesizeWithVolc(
 
   return {
     audioUrl: null,
-    message: `火山TTS失败：${result?.message || '无响应'}${result?.code ? `（code=${result.code}）` : ''}`,
+    message: `火山TTS失败：${result?.message || '无响应'}（code=${result?.code || '?'}）`,
   }
 }
 

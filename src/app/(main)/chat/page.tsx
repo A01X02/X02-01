@@ -40,7 +40,11 @@ export default function ChatPage() {
   const [authReady, setAuthReady] = useState(false)
 
   // 头部显示模式：'full' = 完整头部(汉堡+AI信息) | 'minimal' = 仅输入框
-  const [headerMode, setHeaderMode] = useState<'full' | 'minimal'>('full')
+  // 从 sessionStorage 恢复上次状态（避免切页后重置为 full 但用户之前收起了）
+  const [headerMode, setHeaderMode] = useState<'full' | 'minimal'>(() => {
+    if (typeof window === 'undefined') return 'full'
+    return (sessionStorage.getItem('chat_header_mode') as 'full' | 'minimal') || 'full'
+  })
 
   // 记录每条消息的重新生成次数
   const [regenerateCounts, setRegenerateCounts] = useState<Record<string, number>>({})
@@ -59,14 +63,47 @@ export default function ChatPage() {
   useEffect(() => {
     return onChatToggle(() => {
       setHeaderMode('full')
+      sessionStorage.setItem('chat_header_mode', 'full')
       scrollToBottom()
     })
   }, [scrollToBottom])
 
+  // headerMode 变化时持久化到 sessionStorage（切页不丢状态）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('chat_header_mode', headerMode)
+    }
+  }, [headerMode])
+
   useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
 
-  // 初始化：尝试认证，但不阻塞聊天
+  // 消息变化时备份到 sessionStorage（切页不丢）
   useEffect(() => {
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      try {
+        sessionStorage.setItem('chat_messages', JSON.stringify(messages))
+        if (conversationId) {
+          sessionStorage.setItem('chat_conv_id', conversationId)
+        }
+      } catch { /* 超限则忽略 */ }
+    }
+  }, [messages, conversationId])
+
+  // 初始化：先从 sessionStorage 快速恢复上次消息（切页不空白）
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const cached = sessionStorage.getItem('chat_messages')
+      const cachedConvId = sessionStorage.getItem('chat_conv_id')
+      if (cached) {
+        const parsed: Message[] = JSON.parse(cached)
+        if (parsed.length > 0) {
+          setMessages(parsed)
+          if (cachedConvId) setConversationId(cachedConvId)
+        }
+      }
+    } catch { /* 解析失败忽略 */ }
+
     let cancelled = false
     ;(async () => {
       try {
@@ -273,7 +310,11 @@ export default function ChatPage() {
         setSpeakingId(null)
         // 仅在用户主动点击朗读时提示；自动播放时静默
         if (data.message && !data.message.includes('未配置')) {
-          toast.error(data.message)
+          if (data.message.includes('3001')) {
+            toast.error('声音复刻尚未开通：请到火山引擎控制台 → 声音复刻 → 确认已购买/激活该音色', { duration: 5000 })
+          } else {
+            toast.error(data.message)
+          }
         }
         return
       }
@@ -397,7 +438,7 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen tech-bg tech-grid relative">
       {/* 顶部导航 —— 根据 headerMode 显示或隐藏 */}
       {headerMode === 'full' && (
-        <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10 fade-in">
+        <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10 min-h-[52px] shrink-0">
           <button
             onClick={() => setShowConvList(true)}
             className="text-dark-gray"
