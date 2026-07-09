@@ -75,6 +75,10 @@ const MODEL_ID = process.env.DOUBAO_MODEL_ID || 'ep-20260709001000-997r8'
 const MEMORY_EXTRACTION_INTERVAL = 6
 const SUMMARY_THRESHOLD = 15
 
+// 注入给模型的对话历史条数（即"上下文轮数"×2）。用户希望尽量多参考历史，
+// 默认 100 条（约50轮）；可用环境变量 CHAT_HISTORY_LIMIT 调高到 200（约100轮，仿豆包）。
+const HISTORY_LIMIT = Math.min(parseInt(process.env.CHAT_HISTORY_LIMIT || '100', 10) || 100, 400)
+
 /**
  * 构建带人设的系统提示词
  * @param userName 用户自报的名字（可选，用于拟人化称呼）
@@ -153,7 +157,7 @@ export async function POST(request: NextRequest) {
     let history: { role: string; content: string }[] = []
     if (conversation_id) {
       try {
-        history = await getConversationHistory(conversation_id, 20)
+        history = await getConversationHistory(conversation_id, HISTORY_LIMIT)
       } catch (err) {
         console.warn('对话历史获取降级(非致命):', err instanceof Error ? err.message : err)
       }

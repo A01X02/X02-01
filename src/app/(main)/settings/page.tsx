@@ -183,24 +183,38 @@ export default function SettingsPage() {
 
   /** ===== 改名 ===== */
   const handleSaveName = async () => {
+    // 未登录：仅本地保存（聊天页可即时读取）
     if (!user) {
-      toast.error('请先登录')
+      if (editingName === 'user' && displayName.trim()) {
+        localStorage.setItem('user_display_name', displayName.trim())
+        toast.success('昵称已更新（本地）')
+      } else if (editingName === 'ai' && aiName.trim()) {
+        localStorage.setItem('ai_display_name', aiName.trim())
+        toast.success('AI 名称已更新（本地）')
+      }
+      setEditingName(null)
       return
     }
     try {
       if (editingName === 'user' && displayName.trim()) {
+        // 先写本地，确保"我的"页一定能显示昵称（即使云端同步失败也不丢）
+        localStorage.setItem('user_display_name', displayName.trim())
         const { error } = await supabase
           .from('profiles')
           .upsert({ id: user.id, display_name: displayName.trim() }, { onConflict: 'id' })
-        if (error) throw error
-        // 同步到 localStorage，供聊天页把用户名传给模型
-        localStorage.setItem('user_display_name', displayName.trim())
-        toast.success('昵称已更新')
+        if (error) {
+          // 云端同步失败不阻断：本地已保存，给予温和提示
+          console.warn('[Settings] 昵称云端同步失败(本地已保存):', error.message)
+          toast.success('昵称已保存到本地')
+        } else {
+          toast.success('昵称已更新')
+        }
       } else if (editingName === 'ai' && aiName.trim()) {
         localStorage.setItem('ai_display_name', aiName.trim())
         toast.success('AI 名称已更新')
       }
     } catch (err: any) {
+      // 极端情况下也不丢失本地改动
       toast.error(err.message || '保存失败')
     }
     setEditingName(null)

@@ -68,6 +68,11 @@ export default function ChatPage() {
   // 是否已提示用户点击启用语音（移动端首次需要手势解锁）
   const [showVoiceHint, setShowVoiceHint] = useState(false)
 
+  // P5：用户在设置里给 AI 起的显示名（聊天界面同步称呼）
+  const [aiName, setAiName] = useState<string>(
+    typeof window !== 'undefined' ? (localStorage.getItem('ai_display_name') || '') : ''
+  )
+
   /** 获取（惰性创建）持久化音频元素 */
   const getAudioEl = useCallback(() => {
     if (typeof window === 'undefined') return null
@@ -156,6 +161,13 @@ export default function ChatPage() {
     setShowVoiceHint(false)
   }, [authReady])
 
+  // P5：设置页修改 AI 名称后，聊天界面同步更新（跨标签页 / 返回本页时）
+  useEffect(() => {
+    const syncAiName = () => setAiName(localStorage.getItem('ai_display_name') || '')
+    window.addEventListener('storage', syncAiName)
+    return () => window.removeEventListener('storage', syncAiName)
+  }, [])
+
   useEffect(() => {
     if (skipAutoScrollRef.current) {
       skipAutoScrollRef.current = false
@@ -221,7 +233,7 @@ export default function ChatPage() {
           if (!convError && conversations && conversations.length > 0) {
             setConversationId(conversations[0].id)
             localStorage.removeItem('temp_conv_id')
-            loadMessages(conversations[0].id)
+            loadMessages(conversations[0].id, true)
           } else if (!convError) {
             const { data: newConv, error: insertError } = await supabase
               .from('conversations')
@@ -246,7 +258,7 @@ export default function ChatPage() {
   }, [])
 
   /** 初始加载：只取最近 PAGE_SIZE 条（倒序取再反转为正序），并标记是否还有更早历史 */
-  const loadMessages = async (convId: string) => {
+  const loadMessages = async (convId: string, autoRead: boolean = false) => {
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -261,6 +273,16 @@ export default function ChatPage() {
       setHasMoreHistory((data || []).length >= PAGE_SIZE)
       // 初始加载后滚到底部
       setTimeout(scrollToBottom, 50)
+
+      // P4：刷新/初次进入时，自动朗读最后一条 AI 文字回复（语音条不自动读，见 P6）
+      if (autoRead && isAutoPlayOn()) {
+        const lastAssistant = [...recent].reverse().find(
+          m => m.role === 'assistant' && m.message_type !== 'voice' && m.content
+        )
+        if (lastAssistant) {
+          setTimeout(() => speak(lastAssistant.id, lastAssistant.content), 400)
+        }
+      }
     } catch (err) {
       console.warn('[Chat] 加载消息失败（非致命）:', err)
     }
@@ -539,18 +561,11 @@ export default function ChatPage() {
 
       // ===== 自动朗读（若开关已开且有真实回复） =====
       if (isAutoPlayOn() && data.reply) {
-        // 语音消息：直接用自带的音频 URL 播放（无需再调 TTS）
         if (data.is_voice && data.voice_url) {
-          const el = getAudioEl()
-          if (el) {
-            el.muted = false
-            el.src = data.voice_url
-            el.currentTime = 0
-            setSpeakingId(aiMessage.id)
-            el.play().catch(() => setSpeakingId(null))
-          }
+          // P6：AI 发来的语音条不自动播放，等用户主动点击收听
+          setSpeakingId(null)
         } else {
-          // 文字消息：调 TTS 转语音后播放
+          // 文字消息：调 TTS 转语音后自动播放
           speak(aiMessage.id, aiMessage.content)
         }
       }
@@ -635,10 +650,10 @@ export default function ChatPage() {
             </button>
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
-                <span className="text-white text-sm font-semibold">AI</span>
+                <span className="text-white text-sm font-semibold">{aiName ? aiName.slice(0, 2) : 'AI'}</span>
               </div>
               <div>
-                <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
+                <h1 className="font-semibold text-dark-gray text-sm tracking-breath">{aiName || '智能助手'}</h1>
                 <div className="flex items-center space-x-1">
                   <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
                   <p className="text-xs text-medium-gray">

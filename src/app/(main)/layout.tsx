@@ -71,6 +71,11 @@ export default function MainLayout({
         {children}
       </div>
 
+      {/* 免责声明（合规提示，分享给他人时可见） */}
+      <div className="text-center text-[10px] leading-tight text-medium-gray/70 py-1 px-4 select-none">
+        回复由 AI 生成，内容仅供参考，请勿轻信或过度依赖
+      </div>
+
       {/* 底部导航栏 */}
       <nav className="glass safe-bottom border-t border-light-gray">
         <div className="flex justify-around">
