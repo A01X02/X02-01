@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Message } from '@/types'
 import ChatBubble from '@/components/chat/ChatBubble'
@@ -8,92 +8,107 @@ import ChatInput from '@/components/chat/ChatInput'
 import ConversationList from '@/components/chat/ConversationList'
 import { toast } from 'react-hot-toast'
 
+/** 生成客户端临时 ID（无需服务端） */
+const tempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  // 优先使用服务端会话 ID；若认证失败则用客户端临时 ID（保证聊天不阻塞）
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('temp_conv_id') || tempId()
+    }
+    return null
+  })
   const [userId, setUserId] = useState<string | null>(null)
   const [showConvList, setShowConvList] = useState(false)
   const [memoriesUsed, setMemoriesUsed] = useState(0)
+  const [authReady, setAuthReady] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  useEffect(() => {
-    loadUserAndConversation()
   }, [])
 
-  const loadUserAndConversation = async () => {
-    try {
-      let { data: { user } } = await supabase.auth.getUser()
+  useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
 
-      // 未登录 → 自动匿名登录，确保聊天功能可用
-      if (!user) {
-        const { data: authData, error: anonError } = await supabase.auth.signInAnonymously()
-        if (anonError || !authData?.user) {
-          console.error('匿名登录失败:', anonError?.message)
-          // 匿名登录也失败时仍允许使用（降级模式）
-          return
-        }
-        user = authData.user
-      }
+  // 初始化：尝试认证，但不阻塞聊天
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        // Step 1: 检查已有用户
+        let { data: { user } } = await supabase.auth.getUser()
 
-      setUserId(user.id)
-
-      const { data: conversations, error: convError } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-
-      if (convError) {
-        console.error('加载会话失败:', convError.message)
-        return
-      }
-
-      if (conversations && conversations.length > 0) {
-        setConversationId(conversations[0].id)
-        loadMessages(conversations[0].id)
-      } else {
-        const { data: newConv, error: insertError } = await supabase
-          .from('conversations')
-          .insert({ user_id: user.id, title: '新对话' })
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error('创建会话失败:', insertError.message)
-          return
+        if (!user) {
+          // Step 2: 尝试匿名登录
+          const { data: authData, error: anonError } = await supabase.auth.signInAnonymously()
+          if (!cancelled && authData?.user && !anonError) {
+            user = authData.user
+            setUserId(user.id)
+            console.log('[Chat] 匿名登录成功:', user.id.slice(0, 8))
+          } else {
+            console.warn('[Chat] 匿名登录跳过(降级模式):', anonError?.message || '未知原因')
+          }
+        } else {
+          setUserId(user.id)
+          console.log('[Chat] 已有用户:', user.id.slice(0, 8))
         }
 
-        if (newConv) {
-          setConversationId(newConv.id)
+        // Step 3: 如果有有效用户，同步/创建服务端会话
+        if (user && !cancelled) {
+          const { data: conversations, error: convError } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          if (!convError && conversations && conversations.length > 0) {
+            // 有历史会话 → 使用服务端 ID（消息可持久化）
+            setConversationId(conversations[0].id)
+            localStorage.removeItem('temp_conv_id') // 清掉临时 ID
+            loadMessages(conversations[0].id)
+          } else if (!convError) {
+            // 无历史会话 → 创建新的
+            const { data: newConv, error: insertError } = await supabase
+              .from('conversations')
+              .insert({ user_id: user.id, title: '新对话' })
+              .select()
+              .single()
+
+            if (!insertError && newConv) {
+              setConversationId(newConv.id)
+              localStorage.removeItem('temp_conv_id')
+            }
+            // 创建失败也不阻塞，继续用临时 ID
+          }
         }
+      } catch (err) {
+        console.error('[Chat] 初始化异常（非致命）:', err)
+      } finally {
+        if (!cancelled) setAuthReady(true)
       }
-    } catch (err) {
-      console.error('初始化聊天失败:', err)
-    }
-  }
+    })()
+
+    return () => { cancelled = true }
+  }, [])
 
   const loadMessages = async (convId: string) => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', convId)
-      .order('created_at', { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: true })
 
-    if (error) {
-      toast.error('加载消息失败')
-      return
+      if (error) throw error
+      setMessages(data || [])
+    } catch (err) {
+      console.warn('[Chat] 加载消息失败（非致命）:', err)
+      // 不弹 toast 避免打扰，降级为空消息列表
     }
-    setMessages(data || [])
   }
 
   const handleSelectConversation = (convId: string) => {
@@ -101,113 +116,98 @@ export default function ChatPage() {
     loadMessages(convId)
   }
 
+  /** 核心发送逻辑：无论认证状态如何，保证"显示 + 调 AI"两条都走通 */
   const sendMessage = async (content: string) => {
     if (!content.trim()) return
 
-    // 优化体验：即使没有完整会话状态，也先让用户看到自己的消息
+    const sendTime = new Date().toISOString()
+    // ===== ① 立即显示用户消息（乐观更新，100% 可靠）=====
     const userMessage: Message = {
-      id: Date.now().toString(),
-      conversation_id: conversationId || 'pending',
+      id: tempId(),
+      conversation_id: conversationId || tempId(),
       role: 'user',
       content,
       message_type: 'text',
-      created_at: new Date().toISOString()
+      created_at: sendTime
     }
     setMessages(prev => [...prev, userMessage])
 
-    // 如果没有会话或用户ID，仍尝试调用AI（降级模式）
-    if (!conversationId || !userId) {
-      setLoading(true)
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: content,
-            conversation_id: conversationId || undefined,
-            user_id: userId || undefined
-          })
-        })
-
-        const data = await response.json()
-
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          conversation_id: conversationId || 'pending',
-          role: 'assistant',
-          content: data.reply || data.error || '抱歉，暂时无法回复。',
-          message_type: 'text',
-          created_at: new Date().toISOString()
-        }
-        setMessages(prev => [...prev, aiMessage])
-        if (data.error) {
-          toast.error(data.error)
-        }
-      } catch (error) {
-        toast.error('网络连接失败，请检查网络')
-        console.error('发送失败:', error)
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
-
-    // 正常模式（有完整的会话和用户状态）
+    // ===== ② 调用 AI API =====
     setLoading(true)
-    setMemoriesUsed(0)
-
-    // 写入用户消息到DB（非致命，失败不阻塞聊天）
-    try {
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        role: 'user',
-        content,
-        message_type: 'text'
-      })
-    } catch (dbErr: unknown) {
-      console.warn('写入用户消息到DB失败(非致命):', dbErr instanceof Error ? dbErr.message : String(dbErr))
-    }
-
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: content,
-          conversation_id: conversationId,
-          user_id: userId
+          conversation_id: conversationId || undefined,
+          user_id: userId || undefined
         })
       })
 
+      if (!response.ok) {
+        throw new Error(`API ${response.status}`)
+      }
+
       const data = await response.json()
 
+      // ===== ③ 显示 AI 回复 =====
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        conversation_id: conversationId,
+        id: tempId(),
+        conversation_id: conversationId || tempId(),
         role: 'assistant',
-        content: data.reply || '抱歉，我暂时无法回复。',
+        content: data.reply || data.error || '抱歉，暂时无法回复。',
         message_type: 'text',
         created_at: new Date().toISOString()
       }
-
       setMessages(prev => [...prev, aiMessage])
       setMemoriesUsed(data.meta?.memories_used || 0)
 
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
+      if (data.error) {
+        toast.error(data.error)
+      }
+
+      // ===== ④ 异步持久化到 DB（仅在有完整认证时，静默失败不提示）=====
+      if (userId && conversationId) {
+        try {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            role: 'user',
+            content,
+            message_type: 'text',
+            created_at: sendTime
+          })
+        } catch { /* 静默 */ }
+
+        try {
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: aiMessage.content,
+            message_type: 'text'
+          })
+
+          await supabase
+            .from('conversations')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', conversationId)
+        } catch { /* 静默 */ }
+      }
+    } catch (err) {
+      console.error('[Chat] 发送失败:', err)
+      const errMsg = err instanceof Error ? err.message : String(err)
+
+      // 网络/API 完全不可用时也给一个反馈
+      const fallbackMsg: Message = {
+        id: tempId(),
+        conversation_id: conversationId || tempId(),
         role: 'assistant',
-        content: aiMessage.content,
-        message_type: 'text'
-      })
-
-      // 更新对话的updated_at
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId)
-
-    } catch (error) {
-      toast.error('发送消息失败')
+        content: '网络连接不稳定，请稍后重试~',
+        message_type: 'text',
+        created_at: new Date().toISOString()
+      }
+      setMessages(prev => [...prev, fallbackMsg])
+      toast.error('发送失败，请检查网络')
     } finally {
       setLoading(false)
     }
@@ -233,7 +233,9 @@ export default function ChatPage() {
             <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
             <div className="flex items-center space-x-1">
               <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
-              <p className="text-xs text-medium-gray">在线</p>
+              <p className="text-xs text-medium-gray">
+                {authReady ? '在线' : '连接中...'}
+              </p>
               {memoriesUsed > 0 && (
                 <span className="text-xs text-deep-orange ml-1">
                   · 记忆 {memoriesUsed}

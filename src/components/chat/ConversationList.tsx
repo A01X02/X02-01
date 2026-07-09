@@ -16,77 +16,115 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
   const [loading, setLoading] = useState(true)
   const [showNewInput, setShowNewInput] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [hasAuth, setHasAuth] = useState(false)
 
   useEffect(() => {
     loadConversations()
   }, [])
 
   const loadConversations = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setHasAuth(!!user)
+
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_archived', false)
+        .order('updated_at', { ascending: false })
+
+      if (error) throw error
+
+      setConversations(data || [])
+    } catch (err) {
+      console.error('[ConvList] 加载失败:', err)
+      // 不弹 toast，避免每次打开侧栏都报错
+    } finally {
       setLoading(false)
-      return
     }
-
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_archived', false)
-      .order('updated_at', { ascending: false })
-
-    if (error) {
-      toast.error('加载对话列表失败')
-      setLoading(false)
-      return
-    }
-
-    setConversations(data || [])
-    setLoading(false)
   }
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    const { data, error } = await supabase
-      .from('conversations')
-      .insert({ user_id: user.id, title: newTitle })
-      .select()
-      .single()
-
-    if (error) {
-      toast.error('创建失败')
+    // 无认证时：生成临时会话 ID 并通知父组件（纯本地模式）
+    if (!hasAuth) {
+      const tempId = `temp-conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const tempConv: Conversation = {
+        id: tempId,
+        user_id: '',
+        title: newTitle.trim() || '新对话',
+        is_archived: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      setConversations([tempConv, ...conversations])
+      setNewTitle('')
+      setShowNewInput(false)
+      onSelect(tempConv.id)
+      onClose()
+      toast.success('已创建本地对话（登录后可同步到云端）')
       return
     }
 
-    setConversations([data, ...conversations])
-    setNewTitle('')
-    setShowNewInput(false)
-    onSelect(data.id)
-    onClose()
+    // 有认证：写入 Supabase
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('conversations')
+        .insert({ user_id: user.id, title: newTitle.trim() })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setConversations([data!, ...conversations])
+      setNewTitle('')
+      setShowNewInput(false)
+      onSelect(data!.id)
+      onClose()
+    } catch (err) {
+      console.error('[ConvList] 创建失败:', err)
+      toast.error('创建失败')
+    }
   }
 
   const handleDelete = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation()
 
-    const { error } = await supabase
-      .from('conversations')
-      .update({ is_archived: true })
-      .eq('id', convId)
-
-    if (error) {
-      toast.error('删除失败')
+    // 临时会话直接从本地状态移除
+    if (convId.startsWith('temp-')) {
+      setConversations(conversations.filter(c => c.id !== convId))
+      toast.success('已删除')
+      if (convId === currentConversationId) onClose()
       return
     }
 
-    setConversations(conversations.filter(c => c.id !== convId))
-    toast.success('已删除')
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ is_archived: true })
+        .eq('id', convId)
 
-    if (convId === currentConversationId) {
-      onClose()
+      if (error) throw error
+
+      setConversations(conversations.filter(c => c.id !== convId))
+      toast.success('已删除')
+
+      if (convId === currentConversationId) {
+        onClose()
+      }
+    } catch (err) {
+      console.error('[ConvList] 删除失败:', err)
+      toast.error('删除失败')
     }
   }
 
@@ -135,7 +173,7 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span>新建对话</span>
+              <span>新建对话{!hasAuth ? '（本地）' : ''}</span>
             </button>
           )}
         </div>
@@ -145,7 +183,9 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
           {loading ? (
             <div className="text-center py-8 text-medium-gray text-sm">加载中...</div>
           ) : conversations.length === 0 ? (
-            <div className="text-center py-8 text-medium-gray text-sm">暂无对话</div>
+            <div className="text-center py-8 text-medium-gray text-sm">
+              {hasAuth ? '暂无对话，点击上方新建' : '未登录，新建的对话将保存在本地'}
+            </div>
           ) : (
             conversations.map((conv) => (
               <div
@@ -175,7 +215,7 @@ export default function ConversationList({ currentConversationId, onSelect, onCl
                   className="ml-2 text-medium-gray hover:text-red-500 flex-shrink-0"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
                   </svg>
                 </button>
               </div>
