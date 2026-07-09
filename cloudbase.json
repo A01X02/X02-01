@@ -1,0 +1,25 @@
+{
+  "$schema": "https://framework.cloudbase.net/schema.json",
+  "framework": {
+    "name": "ai-chatbot-domestic",
+    "plugins": {
+      "domestic-app": {
+        "use": "@cloudbase/framework-plugin-container",
+        "inputs": {
+          "name": "ai-chatbot-domestic",
+          "container": {
+            "build": {
+              "dockerfile": "Dockerfile",
+              "context": "."
+            },
+            "run": {
+              "command": "node server.js",
+              "port": 3000,
+              "envVariables": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

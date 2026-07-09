@@ -1,10 +1,12 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import PWARegister from '@/components/PWARegister'
 
-const inter = Inter({ subsets: ['latin'] })
+// 注意：原先使用 next/font/google 的 Inter 字体，但 build 时需连 Google 拉字体，
+// 在国内服务器（如 CloudBase）build 会卡死失败。现改为 globals.css 中已有的
+// 系统中文字体栈（PingFang SC / 微软雅黑等），国内外构建都不再依赖 Google，
+// 中文显示效果也更好。如需恢复 Inter，可改回 next/font/google。
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -37,7 +39,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body className={inter.className}>
+      <body>
         {children}
         <Toaster position="top-center" />
         <PWARegister />
