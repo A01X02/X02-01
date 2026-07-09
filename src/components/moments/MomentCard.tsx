@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { Moment, Comment } from '@/types'
 import { toast } from 'react-hot-toast'
 
+/** AI 系统用户 ID（与 /api/moments/ai-react 保持一致） */
+const AI_USER_ID = '00000000-0000-0000-0000-000000000001'
+
 interface MomentCardProps {
   moment: Moment
   onUpdate: () => void
@@ -114,6 +117,10 @@ export default function MomentCard({ moment, onUpdate }: MomentCardProps) {
     onUpdate()
   }
 
+  /** 判断一条评论是否来自 AI（AI_USER_ID 或关联 profile 查不到时兜底） */
+  const isAiComment = (comment: Comment) =>
+    comment.user_id === AI_USER_ID
+
   return (
     <div className="glass rounded-2xl p-5 fade-in">
       {/* 用户信息 */}
@@ -210,14 +217,23 @@ export default function MomentCard({ moment, onUpdate }: MomentCardProps) {
           ) : (
             comments.map((comment) => (
               <div key={comment.id} className="flex items-start space-x-2">
-                <div className="w-6 h-6 rounded-full bg-light-gray flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs text-dark-gray font-medium">
-                    {(comment.user?.display_name || 'U').charAt(0)}
-                  </span>
-                </div>
+                {/* AI 评论头像：蓝金渐变 */}
+                {isAiComment(comment) ? (
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-semibold text-[10px]">AI</span>
+                  </div>
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-light-gray flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs text-dark-gray font-medium">
+                      {(comment.user?.display_name || 'U').charAt(0)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex-1">
                   <span className="text-xs font-medium text-dark-gray">
-                    {comment.user?.display_name || comment.user?.username || '匿名'}
+                    {isAiComment(comment)
+                      ? '夏以昼'
+                      : (comment.user?.display_name || comment.user?.username || '匿名')}
                   </span>
                   <span className="text-sm text-dark-gray ml-2">{comment.content}</span>
                   <p className="text-xs text-medium-gray mt-0.5">

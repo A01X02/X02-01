@@ -436,57 +436,58 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen tech-bg tech-grid relative">
-      {/* 顶部导航 —— 根据 headerMode 显示或隐藏 */}
-      {headerMode === 'full' && (
-        <div className="glass safe-top border-b border-light-gray px-4 py-3 flex items-center justify-between relative z-10 min-h-[52px] shrink-0">
-          <button
-            onClick={() => setShowConvList(true)}
-            className="text-dark-gray"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
-              <span className="text-white text-sm font-semibold">AI</span>
-            </div>
-            <div>
-              <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
-              <div className="flex items-center space-x-1">
-                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
-                <p className="text-xs text-medium-gray">
-                  {authReady ? '在线' : '连接中...'}
-                </p>
-                {memoriesUsed > 0 && (
-                  <span className="text-xs text-deep-orange ml-1">· 记忆 {memoriesUsed}</span>
-                )}
+      {/* 顶部导航 —— 始终渲染，headerMode 只控制内部元素显隐 */}
+      <div className="bg-white/80 safe-top border-b border-light-gray/60 px-4 py-3 flex items-center justify-between relative z-10 min-h-[52px] shrink-0 backdrop-blur-xl">
+        {/* full 模式：显示汉堡菜单 + AI 信息 */}
+        {headerMode === 'full' && (
+          <>
+            <button
+              onClick={() => setShowConvList(true)}
+              className="text-dark-gray p-1 -ml-1"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-blue to-primary-orange flex items-center justify-center shadow-gold-glow glow-pulse">
+                <span className="text-white text-sm font-semibold">AI</span>
+              </div>
+              <div>
+                <h1 className="font-semibold text-dark-gray text-sm tracking-breath">智能助手</h1>
+                <div className="flex items-center space-x-1">
+                  <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div>
+                  <p className="text-xs text-medium-gray">
+                    {authReady ? '在线' : '连接中...'}
+                  </p>
+                  {memoriesUsed > 0 && (
+                    <span className="text-xs text-deep-orange ml-1">· 记忆 {memoriesUsed}</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          <button
-            onClick={() => setHeaderMode('minimal')}
-            className="text-medium-gray hover:text-dark-gray"
-            title="收起"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      )}
+            <button
+              onClick={() => setHeaderMode('minimal')}
+              className="text-medium-gray hover:text-dark-gray p-1"
+              title="收起"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </>
+        )}
 
-      {/* minimal 模式下只显示一个展开按钮 */}
-      {headerMode === 'minimal' && (
-        <div className="safe-top pt-2 px-4 flex justify-center">
+        {/* minimal 模式：只显示一个展开按钮（居中） */}
+        {headerMode === 'minimal' && (
           <button
             onClick={() => setHeaderMode('full')}
-            className="glass-subtle rounded-full px-4 py-1.5 text-xs text-medium-gray fade-in"
+            className="mx-auto flex items-center space-x-1 text-medium-gray text-xs fade-in"
           >
-            ▼ 展开功能区
+            <span>▼ 展开功能区</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-5 relative">
