@@ -10,7 +10,7 @@ const MODEL_ID = process.env.DOUBAO_MODEL_ID || 'ep-20260709001000-997r8'
  * 用于 likes / comments 表的 user_id 字段（FK 要求非空）
  * 前端 MomentCard 遇到此 ID 时显示 AI 头像/名字
  */
-export const AI_USER_ID = '00000000-0000-0000-0000-000000000001'
+const AI_USER_ID = '00000000-0000-0000-0000-000000000001'
 
 /** 生成一条符合人设的朋友圈评论 */
 async function generateComment(postContent: string, round: number): Promise<string> {
