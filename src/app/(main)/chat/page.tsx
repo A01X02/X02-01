@@ -30,33 +30,47 @@ export default function ChatPage() {
   }, [])
 
   const loadUserAndConversation = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      toast.error('请先登录')
-      return
-    }
-    setUserId(user.id)
-
-    const { data: conversations } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('user_id', user.id)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-
-    if (conversations && conversations.length > 0) {
-      setConversationId(conversations[0].id)
-      loadMessages(conversations[0].id)
-    } else {
-      const { data: newConv } = await supabase
-        .from('conversations')
-        .insert({ user_id: user.id, title: '新对话' })
-        .select()
-        .single()
-
-      if (newConv) {
-        setConversationId(newConv.id)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        // 未登录：直接显示空聊天界面，不阻塞页面
+        return
       }
+      setUserId(user.id)
+
+      const { data: conversations, error: convError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+
+      if (convError) {
+        console.error('加载会话失败:', convError.message)
+        return
+      }
+
+      if (conversations && conversations.length > 0) {
+        setConversationId(conversations[0].id)
+        loadMessages(conversations[0].id)
+      } else {
+        const { data: newConv, error: insertError } = await supabase
+          .from('conversations')
+          .insert({ user_id: user.id, title: '新对话' })
+          .select()
+          .single()
+
+        if (insertError) {
+          console.error('创建会话失败:', insertError.message)
+          return
+        }
+
+        if (newConv) {
+          setConversationId(newConv.id)
+        }
+      }
+    } catch (err) {
+      console.error('初始化聊天失败:', err)
     }
   }
 

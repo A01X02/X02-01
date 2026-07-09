@@ -10,7 +10,7 @@ import {
   generateConversationSummary
 } from '@/lib/memory'
 
-const MODEL_ID = 'ep-3minstm8r9zvkrv8t' // 豆包seed模型ID（替换为实际ID）
+const MODEL_ID = 'ep-20260709001000-997r8' // 豆包seed模型ID（替换为实际ID）
 const MEMORY_EXTRACTION_INTERVAL = 6  // 每6轮对话触发一次记忆提取
 const SUMMARY_THRESHOLD = 15          // 超过15条消息触发摘要生成
 
