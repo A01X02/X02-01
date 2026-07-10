@@ -41,7 +41,7 @@ export default function MomentsPage() {
       }
 
       // Step 2: 批量查 profiles（独立查询，失败不影响主流程）
-      const userIds = [...new Set(rawData.map(m => m.user_id).filter(Boolean))] as string[]
+      const userIds = [...new Set(rawData.map((m: any) => m.user_id).filter(Boolean))] as string[]
 
       let profileMap: Record<string, Profile> = {}
       if (userIds.length > 0) {
@@ -53,7 +53,7 @@ export default function MomentsPage() {
 
           // 注意：profiles 的主键是 id（= auth.users.id），不是 user_id
           if (profiles && !profError) {
-            profileMap = Object.fromEntries(profiles.map(p => [p.id, p]))
+            profileMap = Object.fromEntries(profiles.map((p: any) => [p.id, p]))
           }
         } catch (e) {
           console.warn('[Moments] profiles 查询失败，使用默认名称')
