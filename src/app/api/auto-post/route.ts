@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
         .limit(5)
 
       if (recentMsgs) {
-        recentTopics = recentMsgs.map(m => m.content).filter(Boolean)
+        recentTopics = recentMsgs.map((m: any) => m.content).filter(Boolean)
       }
     } catch {
       // 获取失败不影响发圈

@@ -40,10 +40,10 @@ export async function GET(request: NextRequest) {
     // 按类型分组统计
     const stats = {
       total: data?.length || 0,
-      preference: data?.filter(m => m.memory_type === 'preference').length || 0,
-      fact: data?.filter(m => m.memory_type === 'fact').length || 0,
-      event: data?.filter(m => m.memory_type === 'event').length || 0,
-      summary: data?.filter(m => m.memory_type === 'summary').length || 0,
+      preference: data?.filter((m: any) => m.memory_type === 'preference').length || 0,
+      fact: data?.filter((m: any) => m.memory_type === 'fact').length || 0,
+      event: data?.filter((m: any) => m.memory_type === 'event').length || 0,
+      summary: data?.filter((m: any) => m.memory_type === 'summary').length || 0,
     }
 
     return NextResponse.json({ data, stats })

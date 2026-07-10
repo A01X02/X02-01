@@ -61,7 +61,7 @@ export default function MomentsPage() {
       }
 
       // Step 3: 组装数据
-      const assembled: Moment[] = rawData.map(m => {
+      const assembled: Moment[] = rawData.map((m: any) => {
         // user_id 是 auth.users.id，用它在 profileMap 中查找
         const profile = m.user_id ? profileMap[m.user_id] : undefined
         return {
@@ -83,7 +83,7 @@ export default function MomentsPage() {
             .in('moment_id', momentIds)
 
           if (!likeErr && likesData) {
-            const likedIds = new Set(likesData.map(l => l.moment_id))
+            const likedIds = new Set(likesData.map((l: any) => l.moment_id))
             finalMoments = assembled.map(m => ({ ...m, is_liked: likedIds.has(m.id) }))
           }
         }

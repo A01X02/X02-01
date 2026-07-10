@@ -234,7 +234,7 @@ export async function getConversationHistory(
 
   // 添加最近的消息（反转为正序）
   if (messages) {
-    history.push(...messages.reverse().map(m => ({
+    history.push(...messages.reverse().map((m: any) => ({
       role: m.role,
       content: m.content
     })))
